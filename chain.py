@@ -7,6 +7,7 @@ from langchain.prompts import PromptTemplate
 
 
 
+
 #create load vector store
 def load_vector_store(directory, embedding_model):
     vectorstore = Chroma(

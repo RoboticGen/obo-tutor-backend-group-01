@@ -9,6 +9,7 @@ from twilio.rest import Client
 from urllib.parse import parse_qs
 
 from sqlalchemy.orm import Session
+from sqlalchemy import asc , desc
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -64,12 +65,13 @@ class UserBase(BaseModel):
     age:  int = 10
     communication_format: str = "Textbook"
     tone_style: str = "Neutral"
-    chache_chat_summary: str = ""
+    
 
 class QueryBase(BaseModel):
-    question: str
-    answer: str
-    user_id: int
+    question: str = "q1"
+    answer: str = "a1"
+    user_id: int ="1"
+    chache_chat_summary: str = "nllkllll"
 
 
 
@@ -173,6 +175,15 @@ async def create_query(query: QueryBase, db: db_dependency):
     db_query = models.Query(**query.model_dump())
     db.add(db_query)
     db.commit()
+
+
+
+@app.get("/queries/" , status_code=status.HTTP_200_OK)
+async def read_queries(db: db_dependency):
+    queries = db.query(models.Query).order_by(models.Query.id.desc()).offset(0).limit(20).all()
+
+
+    return queries
     
 
 
@@ -194,12 +205,17 @@ async def read_query(user_id: int, db: db_dependency):
 @app.post("/query/llm/" , status_code=status.HTTP_200_OK)
 async def query_llm(phone_number: str, query: str, db: db_dependency):
     user = db.query(models.User).filter(models.User.phone_number == phone_number).first()
-
+    quiries = db.query(models.Query).filter(models.Query.user_id == user.id).order_by(models.Query.id.desc()).offset(0).limit(20).all()
+    chat_history = ""
+    for q in quiries:
+        chat_history += q.chache_chat_summary + ","
+    print(chat_history)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    chat_response = response(text_model, vectorstore, prompt_template, query, user.age, user.learning_rate, user.communication_format, user.tone_style, user.chache_chat_summary)
+    chat_response = response(text_model, vectorstore, prompt_template, query, user.age, user.learning_rate, chat_history)
     summary = summarize_chat(text_model, history_summarize_prompt_template, query, chat_response)
-    user.chache_chat_summary += "," + summary
+    db_query = models.Query(question=query, answer=chat_response, user_id=user.id, chache_chat_summary=summary)
+    db.add(db_query)
     db.commit()
     return chat_response
 
@@ -227,9 +243,20 @@ async def reply(question: Request,db: db_dependency):
     message_body = parse_qs(await question.body())[b'Body'][0].decode('utf-8')
     try:
         user = db.query(models.User).filter(models.User.phone_number == phone_number).first()
+        
         if user is not None:
-            chat_response = response(text_model, vectorstore, prompt_template, message_body, user.age, user.learning_rate, user.communication_format, user.tone_style, user.chache_chat_summary)
+            quiries = db.query(models.Query).filter(models.Query.user_id == user.id).order_by(models.Query.id.desc()).offset(0).limit(20).all()
+            chat_history = ""
+            for q in quiries:
+                chat_history += q.chache_chat_summary + ","
+            print(chat_history)
+            chat_response = response(text_model, vectorstore, prompt_template, message_body, user.age, user.learning_rate, user.communication_format, user.tone_style, chat_history)
             send_message(phone_number, chat_response)
+            summary = summarize_chat(text_model, history_summarize_prompt_template, message_body, chat_response)
+            db_query = models.Query(question=message_body, answer=chat_response, user_id=user.id, chache_chat_summary=summary)
+            db.add(db_query)
+            db.commit()
+
 
 
         else:

@@ -25,12 +25,13 @@ logger = logging.getLogger(__name__)
 
 
 
-def send_message(to_number, body_text):
+def send_message(to_number, body_text, imgae_url=None):
     try:
         message = client.messages.create(
             from_=f"whatsapp:{twilio_number}",
             body=body_text,
-            to=f"whatsapp:{to_number}"
+            to=f"whatsapp:{to_number}",
+            media_url=[imgae_url] if imgae_url else None
             )
         logger.info(f"Message sent to {to_number}: {message.body}")
     except Exception as e:

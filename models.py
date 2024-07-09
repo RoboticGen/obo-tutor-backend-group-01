@@ -17,7 +17,7 @@ class User(Base):
     age = Column(Integer, default=10)
     communication_format = Column(String(50), default="Textbook")
     tone_style = Column(String(50) , default="Neutral")
-    chache_chat_summary = Column(Text , default="" )
+  
     
 
 class Query(Base):
@@ -27,7 +27,7 @@ class Query(Base):
     # title = Column(String(50))
     question = Column(Text)
     answer = Column(Text)
-
+    chache_chat_summary = Column(Text , default="" )
     user_id = Column(Integer)
 
     
