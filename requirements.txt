@@ -1,0 +1,16 @@
+fastapi 
+uvicorn 
+sqlalchemy 
+pymysql
+twilio
+chromadb
+langchain-google-genai
+langchain_community
+langchain_core
+langchain_openai
+psycopg2-binary
+python-multipart
+pyngrok
+langchain
+openai
+python-decouple
