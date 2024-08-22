@@ -16,7 +16,7 @@ class UserBase(BaseModel):
     password: str
     phone_number: str
     learning_rate: str = "Active"
-    role: str
+    role: str = "Student"
     age:  int
     communication_format: str = "Textbook"
     tone_style: str = "Neutral"
