@@ -212,7 +212,7 @@ async def check_user_exist(phone_number:str, db: db_dependency):
 
 
 
-
+# ask question and get answer from the chatbot in the WHATSAPP 
 @app.post("/")
 async def reply(question: Request,db: db_dependency):
     phone_number = parse_qs(await question.body())[b'WaId'][0].decode('utf-8')
@@ -343,13 +343,13 @@ async def create_chatbox(chatbox: Chatbox, db: db_dependency, token: str = Depen
     return chatbox_id  
 
 
-
+# ask question and get answer from the chatbot in the WHATSAPP
 # create message
 @app.post("/chatbox/message", status_code=status.HTTP_200_OK)
 async def create_message(message: Message, db: db_dependency, token: str = Depends(oauth2_scheme)):
     
     payload = decode_jwt_token(token)
-    db_message = models.User(**message.model_dump())  
+    db_message = models.Message(**message.model_dump())  
 
     db.add(db_message)
     db.commit()
@@ -395,7 +395,7 @@ async def delete_message(user_id: int, db: db_dependency, token: str = Depends(o
     return {"detail": "User deleted successfully"}
 
 
-
+# irrelavant
 # get all messages by user id
 @app.get("/message/{user_id}" , status_code=status.HTTP_200_OK)
 async def read_message(user_id: int, db: db_dependency, token: str = Depends(oauth2_scheme)):
@@ -405,6 +405,19 @@ async def read_message(user_id: int, db: db_dependency, token: str = Depends(oau
     if db_messages is None:
         raise HTTPException(status_code=404, detail="Messages not found")
     return db_messages
+
+
+
+# get all chatboxes by user id
+@app.get("/chatbox/{user_id}" , status_code=status.HTTP_200_OK)
+async def get_chatboxes(user_id: int, db: db_dependency, token: str = Depends(oauth2_scheme)):
+    
+    payload = decode_jwt_token(token)
+    db_chatboxes = db.query(models.Chatbox).filter(models.Chatbox.user_id == user_id)
+    if db_chatboxes is None:
+        raise HTTPException(status_code=404, detail="Chatboxes not found")
+    return db_chatboxes
+
 
 
 
