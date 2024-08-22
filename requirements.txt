@@ -14,3 +14,5 @@ pyngrok
 langchain
 openai
 python-decouple
+passlib
+pydantic[email]
