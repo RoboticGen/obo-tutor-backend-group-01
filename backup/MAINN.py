@@ -1,12 +1,9 @@
 import os
 from fastapi import FastAPI,HTTPException, Depends, status,Request , Form
-from typing import Annotated, Optional
-from pydantic import ValidationError
+from typing import Annotated
 import models
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from dto import UserBase, UserLogin, Chatbox, Message, UserValidate, TokenData # ---
+from dto import UserBase, UserLogin
 from database import engine, SessionLocal
-from passlib.context import CryptContext
 import logging
 from twilio.rest import Client
 from urllib.parse import parse_qs
@@ -25,8 +22,7 @@ from chain import summarize_chat
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from datetime import datetime, timedelta
-import jwt
+
 
 app = FastAPI()
 
@@ -36,6 +32,7 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # vector data base path 
 vector_database_path = 'chroma_db/'
+
 
 
 # twilio api keys
@@ -48,54 +45,12 @@ auth_token = TWILIO_AUTH_TOKEN
 client = Client(account_sid, auth_token)
 twilio_number = TWILIO_NUMBER 
 
-SECRET_KEY =os.getenv("SECRET_KEY")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30  # 30 minutes
-
-
-
-
-
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 models.Base.metadata.create_all(bind=engine)
-
-
-# Password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-def hash_password(password: str):
-    return pwd_context.hash(password)
-
-
-
-# Define the OAuth2 scheme
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
-
-# JWT token generation and decoding
-def create_jwt_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.now() + expires_delta
-    else:
-        expire = datetime.now()  + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-
-def decode_jwt_token(token: str):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token has expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
 
 
 
@@ -168,6 +123,65 @@ Summary:
 
 # load dependency
 db_dependency = Annotated[Session, Depends(get_db)]
+
+
+@app.post("/users/" , status_code=status.HTTP_201_CREATED)
+async def create_user(user: UserBase, db:db_dependency):
+    db_user  = models.User(**user.model_dump()) #data validation
+    db.add(db_user)
+    db.commit() 
+
+
+@app.get("/users/{user_id}" , status_code=status.HTTP_200_OK)
+async def read_user(user_id: int, db: db_dependency):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+@app.get("/users/phone_number/" , status_code=status.HTTP_200_OK)
+async def read_user(phone_number: str, db: db_dependency):
+    user = db.query(models.User).filter(models.User.phone_number == phone_number).first()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
+# @app.post("/queries/" , status_code=status.HTTP_201_CREATED)
+# async def create_query(query: QueryBase, db: db_dependency):
+#     db_query = models.Query(**query.model_dump())
+#     db.add(db_query)
+#     db.commit()
+
+
+
+@app.get("/queries/" , status_code=status.HTTP_200_OK)
+async def read_queries(db: db_dependency):
+    queries = db.query(models.Query).order_by(models.Query.id.desc()).offset(0).limit(20).all()
+
+
+    return queries
+    
+
+
+@app.get("/queries/{query_id}" , status_code=status.HTTP_200_OK)
+async def read_query(query_id: int, db: db_dependency):
+    query = db.query(models.Query).filter(models.Query.id == query_id).first()
+    if query is None:
+        raise HTTPException(status_code=404, detail="Query not found")
+    return query
+
+@app.get("/queries/user_id/" , status_code=status.HTTP_200_OK)
+async def read_query(user_id: int, db: db_dependency):
+    query = db.query(models.Query).filter(models.Query.user_id == user_id)
+    if query is None:
+        raise HTTPException(status_code=404, detail="Query not found")
+    return query
+
+
+
+
+
 
 
 
@@ -243,160 +257,18 @@ async def reply(question: Request,db: db_dependency):
     #     send_message("+94722086410", "wait")
 
 
-
-
-
-
-# ======================== API ENDPOINTS ========================
-
-
-# --TO DO--
-# password hashing and match databases hashed password
-# login
-@app.post("/login" , status_code=status.HTTP_200_OK)
+# login endpoint
+# fetch usinf email
+@app.get("/login" , status_code=status.HTTP_200_OK)
 async def login_user(user: UserLogin, db: db_dependency):
-    user_db = db.query(models.User).filter(models.User.email == user.email).first()
+    user_db = db.query(models.User).filter(models.User.id == user.id).first()
+    if user_db is None:
+        raise HTTPException(status_code=404, detail="User not found")
     
-    if user_db is None or not pwd_context.verify(user.password, user_db.password):
-        raise HTTPException(status_code=404, detail="Invalid Credentials")
-    
-    # Generate JWT token
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_jwt_token({"sub": user_db.email}, expires_delta=access_token_expires)
-    
-    return {
-        "user_details": user_db, 
-        "access_token": access_token, 
-        "token_type": "bearer"
-    }
-    
+    if user_db.email != user.email or user_db.password != user.password:
+        raise HTTPException(status_code=400, detail="Email or password do not match.")
+    return user_db
 
-
-
-
-# --TO DO--
-# JWT token generation
-
-
-# sign in
-@app.post("/signin", status_code=status.HTTP_200_OK)
-async def signin_user(user: UserBase, db: db_dependency):
-    # Custom validation checks
-    try:
-        #  Pydantic's validation to catch any issues
-        valid_user = UserValidate(
-            email=user.email, 
-            password=user.password, 
-            phone_number=user.phone_number)
-    except ValidationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(e.errors()[0]['msg'])
-        )
-    
-    user.password = hash_password(user.password)
-    db_user = models.User(**user.model_dump()) 
-
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    
-    user_id = db_user.id
-    if user_id is None:
-        raise HTTPException(status_code=404, detail="User not created")
-    
-    # Generate JWT token
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_jwt_token({"sub": user.email}, expires_delta=access_token_expires)
-    
-    return {
-        "user_id": user_id, 
-        "access_token": access_token, 
-        "token_type": "bearer"
-    }
-    
-
-
-
-# create chatbox
-@app.post("/chatbox", status_code=status.HTTP_200_OK)
-async def create_chatbox(chatbox: Chatbox, db: db_dependency, token: str = Depends(oauth2_scheme)):
-    
-    payload = decode_jwt_token(token)
-    db_chatbox = models.User(**chatbox.model_dump())  
-
-    db.add(db_chatbox)
-    db.commit()
-    db.refresh(db_chatbox)
-    
-    chatbox_id = db_chatbox.id
-    if chatbox_id is None:
-        raise HTTPException(status_code=404, detail="Chatbox not created")
-    return chatbox_id  
-
-
-
-# create message
-@app.post("/chatbox/message", status_code=status.HTTP_200_OK)
-async def create_message(message: Message, db: db_dependency, token: str = Depends(oauth2_scheme)):
-    
-    payload = decode_jwt_token(token)
-    db_message = models.User(**message.model_dump())  
-
-    db.add(db_message)
-    db.commit()
-    db.refresh(db_message)
-    
-    message_id = db_message.id
-    if message_id is None:
-        raise HTTPException(status_code=404, detail="Message not created")
-    return message_id  
-
-
-
-# delete chatbox
-@app.delete("/chatbox/{chat_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_message(chat_id: int, db: db_dependency, token: str = Depends(oauth2_scheme)):
-    
-    payload = decode_jwt_token(token)
-    db_chatbox = db.query(models.Chatbox).filter(models.Chatbox.id == chat_id).first()
-    
-    if db_chatbox is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chatbox not found")
-
-    db.delete(db_chatbox)
-    db.commit()
-    
-    return {"detail": "Message deleted successfully"}
-
-
-
-# delete user
-@app.delete("/user/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_message(user_id: int, db: db_dependency, token: str = Depends(oauth2_scheme)):
-    
-    payload = decode_jwt_token(token)
-    db_user = db.query(models.User).filter(models.User.id == user_id).first()
-    
-    if db_user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
-    db.delete(db_user)
-    db.commit()
-    
-    return {"detail": "User deleted successfully"}
-
-
-
-# get all messages by user id
-@app.get("/message/{user_id}" , status_code=status.HTTP_200_OK)
-async def read_message(user_id: int, db: db_dependency, token: str = Depends(oauth2_scheme)):
-    
-    payload = decode_jwt_token(token)
-    db_messages = db.query(models.Message).filter(models.Message.user_id == user_id)
-    if db_messages is None:
-        raise HTTPException(status_code=404, detail="Messages not found")
-    return db_messages
 
 
 
