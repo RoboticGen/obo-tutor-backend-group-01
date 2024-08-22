@@ -212,12 +212,17 @@ async def query_llm(phone_number: str, query: str, db: db_dependency):
     print(chat_history)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    chat_response = response(text_model, vectorstore, prompt_template, query, user.age, user.learning_rate, chat_history)
+    chat_response = response(text_model, vectorstore, prompt_template, query, user.age, user.learning_rate,user.communication_format, user.tone_style , chat_history)
+
     summary = summarize_chat(text_model, history_summarize_prompt_template, query, chat_response)
     db_query = models.Query(question=query, answer=chat_response, user_id=user.id, chache_chat_summary=summary)
     db.add(db_query)
     db.commit()
     return chat_response
+
+
+
+
 
 
 

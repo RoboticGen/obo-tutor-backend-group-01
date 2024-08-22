@@ -2,9 +2,9 @@ from langchain_community.vectorstores import Chroma
 
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
+from fastapi.responses import HTMLResponse, JSONResponse
 
-
-
+import base64
 
 
 
@@ -33,6 +33,8 @@ def response(model_name, vectorstore , prompt_template, question,age, learining_
                     prompt=PromptTemplate.from_template(prompt_template))
 
     result = qa_chain.run({'context': context, 'question': question,  'age': age, 'learning_rate': learining_rate, 'communication_format': communication_format, 'tone_style': tone_style, 'chat_history': chat_history})
+
+    
 
     return result
 
