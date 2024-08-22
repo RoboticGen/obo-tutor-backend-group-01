@@ -279,15 +279,10 @@ async def login_user(user: UserLogin, db: db_dependency):
 # JWT token generation
 
 
-<<<<<<< HEAD
 # sign up
 @app.post("/signup", status_code=status.HTTP_200_OK)
 async def signup_user(user: UserBase, db: db_dependency):
-=======
-# sign in
-@app.post("/signup", status_code=status.HTTP_200_OK)
-async def signin_user(user: UserBase, db: db_dependency):
->>>>>>> 4a080782f93ba6a5a0f6ee6af9c7989fe0464943
+
     # Custom validation checks
     try:
         #  Pydantic's validation to catch any issues
