@@ -141,7 +141,7 @@ prompt_template = """
     Communication Format: {communication_format}
     Tone Style: {tone_style}
     previous chat history: {chat_history}
-
+    
     [Context]
     Curriculum: RoboticGen Academy, Notes Content: {context},
 
@@ -149,6 +149,7 @@ prompt_template = """
     {question}
 
     [tutor response]
+
     """
 
 
@@ -279,7 +280,7 @@ async def login_user(user: UserLogin, db: db_dependency):
 
 
 # sign in
-@app.post("/signin", status_code=status.HTTP_200_OK)
+@app.post("/signup", status_code=status.HTTP_200_OK)
 async def signin_user(user: UserBase, db: db_dependency):
     # Custom validation checks
     try:
@@ -323,7 +324,8 @@ async def signin_user(user: UserBase, db: db_dependency):
 async def create_chatbox(chatbox: Chatbox, db: db_dependency, token: str = Depends(oauth2_scheme)):
     
     payload = decode_jwt_token(token)
-    db_chatbox = models.User(**chatbox.model_dump())  
+    print(payload)
+    db_chatbox = models.Chatbox(**chatbox.model_dump())  
 
     db.add(db_chatbox)
     db.commit()
