@@ -20,17 +20,14 @@ class UserBase(BaseModel):
     age:  int
     communication_format: str = "Textbook"
     tone_style: str = "Neutral"
-    
-
 class Chatbox(BaseModel):
     chat_name: str
-    created_at: datetime 
+    
     user_id: int
     
     
 class Message(BaseModel):
     Message: str
-    created_at: datetime 
     message_type: str
     chatbox_id: int
     user_id: int

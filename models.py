@@ -1,6 +1,6 @@
 from sqlalchemy import Boolean, Column, Integer, String, Text, DateTime, ForeignKey, Enum
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime , timezone
 from zoneinfo import ZoneInfo
 from database import Base
 # from enum import Enum
@@ -36,7 +36,7 @@ class Chatbox(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     chat_name = Column(String(100), nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(ZoneInfo('UTC'))) 
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc)) 
     user_id = Column(Integer, ForeignKey('user.id'))
     
     user = relationship('User', back_populates='chatbox')
@@ -48,7 +48,7 @@ class Message(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     message = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(ZoneInfo('UTC')))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     message_type = Column(String(50), default="text")
     chatbox_id = Column(Integer, ForeignKey('chatbox.id'), nullable=False)
     user_id = Column(Integer, ForeignKey('user.id'))

@@ -141,7 +141,7 @@ prompt_template = """
     Communication Format: {communication_format}
     Tone Style: {tone_style}
     previous chat history: {chat_history}
-
+    
     [Context]
     Curriculum: RoboticGen Academy, Notes Content: {context},
 
@@ -149,6 +149,7 @@ prompt_template = """
     {question}
 
     [tutor response]
+
     """
 
 
@@ -278,9 +279,15 @@ async def login_user(user: UserLogin, db: db_dependency):
 # JWT token generation
 
 
+<<<<<<< HEAD
 # sign up
 @app.post("/signup", status_code=status.HTTP_200_OK)
 async def signup_user(user: UserBase, db: db_dependency):
+=======
+# sign in
+@app.post("/signup", status_code=status.HTTP_200_OK)
+async def signin_user(user: UserBase, db: db_dependency):
+>>>>>>> 4a080782f93ba6a5a0f6ee6af9c7989fe0464943
     # Custom validation checks
     try:
         #  Pydantic's validation to catch any issues
@@ -323,7 +330,8 @@ async def signup_user(user: UserBase, db: db_dependency):
 async def create_chatbox(chatbox: Chatbox, db: db_dependency, token: str = Depends(oauth2_scheme)):
     
     payload = decode_jwt_token(token)
-    db_chatbox = models.User(**chatbox.model_dump())  
+    print(payload)
+    db_chatbox = models.Chatbox(**chatbox.model_dump())  
 
     db.add(db_chatbox)
     db.commit()
