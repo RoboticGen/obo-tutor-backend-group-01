@@ -30,6 +30,7 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from datetime import datetime, timedelta
+from fastapi.middleware.cors import CORSMiddleware
 import jwt
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -43,7 +44,6 @@ app.add_middleware(
     allow_methods=["*"],  # This allows all methods (GET, POST, OPTIONS, etc.)
     allow_headers=["*"],  # This allows all headers
 )
-
 
 
 # google api key
