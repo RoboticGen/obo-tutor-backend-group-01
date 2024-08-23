@@ -22,13 +22,13 @@ class User(Base):
     password = Column(String(255))
     phone_number = Column(String(50))
     learning_rate = Column(String(50) , default="Active")
-    role = Column(Enum(Role))
     age = Column(Integer, default=10)
     communication_format = Column(String(50), default="Textbook")
     tone_style = Column(String(50) , default="Neutral")
     
     chatbox = relationship('Chatbox', back_populates='user')
     message = relationship('Message', back_populates='user')
+    summary = relationship('Summary', back_populates='user')
   
   
 class Chatbox(Base):
@@ -41,6 +41,7 @@ class Chatbox(Base):
     
     user = relationship('User', back_populates='chatbox')
     message = relationship('Message', back_populates='chatbox')
+    summary = relationship('Summary', back_populates='chatbox')
     
     
 class Message(Base):
@@ -49,7 +50,7 @@ class Message(Base):
     id = Column(Integer, primary_key=True, index=True)
     message = Column(Text, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    message_type = Column(String(50), default="text")
+    message_type = Column(Enum(Role), default="text")
     chatbox_id = Column(Integer, ForeignKey('chatbox.id'), nullable=False)
     user_id = Column(Integer, ForeignKey('user.id'))
     
@@ -57,6 +58,17 @@ class Message(Base):
     user = relationship('User', back_populates='message')
 
 
+class Summary(Base):
+    __tablename__ = "summary"
+
+    id = Column(Integer, primary_key=True, index=True)
+    summary = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc)) 
+    chatbox_id = Column(Integer, ForeignKey('chatbox.id'))
+    user_id = Column(Integer, ForeignKey('user.id'))
+    
+    user = relationship('User', back_populates='summary')
+    chatbox = relationship('Chatbox', back_populates='summary')
 
 
 

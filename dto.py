@@ -9,6 +9,11 @@ import re
 #   Pydantic BaseModels for
 
 
+# roles for messages
+class Role(str, Enum):
+    QUESTION = "user"
+    ANSWER = "gpt"
+
 class UserBase(BaseModel):
     first_name: str
     last_name: str
@@ -20,17 +25,18 @@ class UserBase(BaseModel):
     age:  int
     communication_format: str = "Textbook"
     tone_style: str = "Neutral"
-class Chatbox(BaseModel):
-    chat_name: str
     
+class Chatbox(BaseModel):
+    chat_name: str = "to be filled"
     user_id: int
     
     
 class Message(BaseModel):
-    Message: str
-    message_type: str
+    message: str
+    message_type: str = Role
     chatbox_id: int
     user_id: int
+    
 
 
 class UserLogin(BaseModel):
@@ -69,7 +75,3 @@ class UserValidate(BaseModel):
             }
         }
     
-    
-class Role(Enum):
-    STUDENT = "student"
-    TEACHER = "teacher"
