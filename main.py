@@ -11,6 +11,10 @@ import logging
 from twilio.rest import Client
 from urllib.parse import parse_qs
 
+from openai import OpenAI
+from langchain_openai import ChatOpenAI
+from langchain_openai import OpenAIEmbeddings
+
 from sqlalchemy.orm import Session
 from sqlalchemy import asc , desc
 
@@ -27,12 +31,25 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 from datetime import datetime, timedelta
 import jwt
+from fastapi.middleware.cors import CORSMiddleware
+
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Adjust this to restrict the allowed origins
+    allow_credentials=True,
+    allow_methods=["*"],  # This allows all methods (GET, POST, OPTIONS, etc.)
+    allow_headers=["*"],  # This allows all headers
+)
+
 
 
 # google api key
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# os.environ['OPENAI_API_KEY']=os.getenv("OPENAI_API_KEY")
 
 # vector data base path 
 vector_database_path = 'chroma_db/'
@@ -119,6 +136,9 @@ def load_model(model_name):
 
   return llm
 
+# def load_model():
+#     llm = ChatOpenAI(model="gpt-4o")
+#     return llm
 
 text_model = load_model("gemini-pro")
 
@@ -190,6 +210,10 @@ async def query_llm(phone_number: str, query: str, db: db_dependency):
     db.add(db_query)
     db.commit()
     return chat_response
+
+
+
+
 
 
 
@@ -287,14 +311,18 @@ async def login_user(user: UserLogin, db: db_dependency):
 # sign up
 @app.post("/signup", status_code=status.HTTP_200_OK)
 async def signup_user(user: UserBase, db: db_dependency):
+   
 
     # Custom validation checks
     try:
         #  Pydantic's validation to catch any issues
+
         valid_user = UserValidate(
             email=user.email, 
             password=user.password, 
             phone_number=user.phone_number)
+        
+        
     except ValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -340,7 +368,7 @@ async def create_chatbox(chatbox: Chatbox, db: db_dependency, token: str = Depen
     chatbox_id = db_chatbox.id
     if chatbox_id is None:
         raise HTTPException(status_code=404, detail="Chatbox not created")
-    return chatbox_id  
+    return db_chatbox
 
 
 # ask question and get answer from the chatbot in the WHATSAPP
@@ -356,6 +384,42 @@ async def create_message(message: Message, db: db_dependency, token: str = Depen
     db.refresh(db_message)
     
     message_id = db_message.id
+    user_id = db_message.user_id
+    chatbox_id = db_message.chatbox_id
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    print(user)
+
+    # get chat summaries for the chat history accoriding to the user id & chatbox id
+    chat_summaries = db.query(models.Summary).filter(
+        models.Summary.user_id == user_id,
+        models.Summary.chatbox_id == chatbox_id
+    ).order_by(models.Summary.created_at.desc()).offset(0).limit(20).all()
+
+    print(chat_summaries)
+
+    chat_history = ""
+    for c in chat_summaries:
+        chat_history += c.summary + ","
+    print(chat_history)
+
+    chat_response = response(text_model, vectorstore, prompt_template, message.message, user.age, user.learning_rate, user.communication_format, user.tone_style, chat_history)
+    summary = summarize_chat(text_model, history_summarize_prompt_template, message.message, chat_response)
+    db_query = models.Summary(summary=summary, user_id=user_id, chatbox_id=chatbox_id)
+    db.add(db_query)
+    db.commit()
+
+    # add chat response to db
+    db_message = models.Message(message=chat_response, message_type="gpt", chatbox_id=chatbox_id, user_id=user_id)
+    db.add(db_message)
+    db.commit()
+    db.refresh(db_message)
+
+    return chat_response
+
+
+
+
     if message_id is None:
         raise HTTPException(status_code=404, detail="Message not created")
     return message_id  
@@ -397,11 +461,14 @@ async def delete_message(user_id: int, db: db_dependency, token: str = Depends(o
 
 # irrelavant
 # get all messages by user id
-@app.get("/message/{user_id}" , status_code=status.HTTP_200_OK)
-async def read_message(user_id: int, db: db_dependency, token: str = Depends(oauth2_scheme)):
+@app.get("/messages/{chat_id}/{user_id}" , status_code=status.HTTP_200_OK)
+async def read_message(chat_id: int, user_id: int, db: db_dependency, token: str = Depends(oauth2_scheme)):
     
     payload = decode_jwt_token(token)
-    db_messages = db.query(models.Message).filter(models.Message.user_id == user_id)
+    db_messages = db.query(models.Message).filter(
+        models.Message.chatbox_id == chat_id,
+        models.Message.user_id == user_id
+    ).all()
     if db_messages is None:
         raise HTTPException(status_code=404, detail="Messages not found")
     return db_messages
@@ -409,15 +476,24 @@ async def read_message(user_id: int, db: db_dependency, token: str = Depends(oau
 
 
 # get all chatboxes by user id
-@app.get("/chatbox/{user_id}" , status_code=status.HTTP_200_OK)
+@app.get("/chatbox/user/{user_id}" , status_code=status.HTTP_200_OK)
 async def get_chatboxes(user_id: int, db: db_dependency, token: str = Depends(oauth2_scheme)):
     
     payload = decode_jwt_token(token)
-    db_chatboxes = db.query(models.Chatbox).filter(models.Chatbox.user_id == user_id)
+    db_chatboxes = db.query(models.Chatbox).filter(models.Chatbox.user_id == user_id).all()
     if db_chatboxes is None:
         raise HTTPException(status_code=404, detail="Chatboxes not found")
     return db_chatboxes
 
+# get all chatboxes by chat id
+@app.get("/chatbox/{chat_id}" , status_code=status.HTTP_200_OK)
+async def get_chatboxes(chat_id: int, db: db_dependency, token: str = Depends(oauth2_scheme)):
+    
+    payload = decode_jwt_token(token)
+    db_chatboxes = db.query(models.Chatbox).filter(models.Chatbox.id == chat_id).first()
+    if db_chatboxes is None:
+        raise HTTPException(status_code=404, detail="Chatboxes not found")
+    return db_chatboxes
 
 
 

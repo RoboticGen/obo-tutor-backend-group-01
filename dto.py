@@ -11,8 +11,8 @@ import re
 
 # roles for messages
 class Role(str, Enum):
-    QUESTION = "question"
-    ANSWER = "answer"
+    QUESTION = "user"
+    ANSWER = "gpt"
 
 class UserBase(BaseModel):
     first_name: str
@@ -20,10 +20,11 @@ class UserBase(BaseModel):
     email: str
     password: str
     phone_number: str
-    # learning_rate: str = "Active"
+    learning_rate: str = "Active"
+    role: str = "Student"
     age:  int
     communication_format: str = "Textbook"
-    # tone_style: str = "Neutral"
+    tone_style: str = "Neutral"
     
 class Chatbox(BaseModel):
     chat_name: str = "to be filled"
