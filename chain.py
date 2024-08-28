@@ -36,7 +36,7 @@ def response(model_name, vectorstore , prompt_template, question,age, learining_
 
     
 
-    return result
+    return {'result': result, 'relevant_images': relevant_images}
 
 
 def summarize_chat(model_name, prompt_template, question, answer):
