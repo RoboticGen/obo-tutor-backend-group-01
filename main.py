@@ -142,7 +142,7 @@ def load_model(model_name):
 
 # text_model = load_model("gemini-pro")
 text_model =  ChatOpenAI(
-    model="gpt-4o",
+    model="gpt-4o-mini",
     temperature=0.5,
     max_tokens=1500,
 )
@@ -158,12 +158,19 @@ vectorstore = load_vector_store(directory=vector_database_path, embedding_model=
 prompt_template = """
     You are an AI tutor. Adjust your response based on the following student profile, the chat history and the context.
     If the student want to change the tone style or communication format, you should adjust your response accordingly.
-    Answer like a converation between a student and a tutor.If student say hi, or any greeting, you should respond accordingly.
+    Answer like a converation between a student and a teacher.If student say hi, or any greeting, you should respond accordingly.
+    Strickly follow the curriculum content. Dont exceed the curriculum content.
     You can use the context to provide the answer to the question. If you dont have the answer in the context, you can give I dont know.
-    Generate answers without exceed the curriculum content. Dont tell like in the context you provided.
-    Dont use images in the answer and limit the answer to 1500 maximum characters.
+    Dont use images in the answer and Limit the answer to 1500 maximum characters.
+
+    If the student ask for a website link or a youtube video link, you should provide the link to the student.
+
+    If the student ask question from the chat history, you should provide the answer but dont give any answer outside the curriculum content.
+
+
+
     [profile]
-    Age: {age}
+    Age: {age} years
     Learning rate: {learning_rate}
     Communication Format: {communication_format}
     Tone Style: {tone_style}
@@ -177,12 +184,12 @@ prompt_template = """
     [student question]
     {question}
 
-    If you have no context, Tell the student that you dont have the context to provide the answer.
-
+    If you have no context, Tell the student that you dont know the answer and Dont give any references.
+    If you have context,you should provide more sources like website links , youtube video links for the student to refer to.
+    underline if you give any links.
+   
 
     [tutor response]
-
-    At the bottom of the response, you should provide more sources for the student to refer to.
 
     """
 
@@ -190,9 +197,15 @@ whatsapp_prompt_template = """
     You are an AI tutor. Adjust your response based on the following student profile, the chat history and the context.
     If the student want to change the tone style or communication format, you should adjust your response accordingly.
     Answer like a converation between a student and a tutor.If student say hi, or any greeting, you should respond accordingly.
+    Strickly follow the curriculum content. Dont exceed the curriculum content.
     You can use the context to provide the answer to the question. If you dont have the answer in the context, you can give I dont know.
-    Generate answers without exceed the curriculum content. Dont tell like in the context you provided.
-    Dont use images in the answer and limit the answer to 800 maximum characters.
+    Dont use images in the answer and Limit the answer to 800 maximum characters.
+
+    If the student ask for a website link or a youtube video link, you should provide the link to the student.
+
+    If the student ask question from the chat history, you should provide the answer but dont give any answer outside the curriculum content.
+
+
     [profile]
     Age: {age}
     Learning rate: {learning_rate}
@@ -208,12 +221,13 @@ whatsapp_prompt_template = """
     [student question]
     {question}
 
-    If you have no context, Tell the student that you dont have the context to provide the answer.
+    If you have no context, Tell the student that you dont know the answer and Dont give any references.
+    If you have context,you should provide more sources like website links , youtube video links for the student to refer to.
+ 
 
 
     [tutor response]
 
-    At the bottom of the response, you should provide more sources for the student to refer to.
 
     """
 
@@ -221,6 +235,7 @@ whatsapp_prompt_template = """
 
 history_summarize_prompt_template = """You are an assistant tasked with summarizing text for retrieval.
 Summarize the student question and tutor answer in a concise manner.It should be a brief summary of the conversation.
+The summary should be a maximum of 200 characters.
 
 student question: {human_question}
 tutor answer: {ai_answer}
@@ -238,7 +253,15 @@ db_dependency = Annotated[Session, Depends(get_db)]
 
 
 
+#============convert base 64 to image==================
 
+# import base64
+# from PIL import Image
+
+# def convert_base64_to_image(base64_string):
+#     base64_string = base64_string.split(",")[1]
+#     imgdata = base64.b64decode(base64_string)
+#     return imgdata
 
 
 
@@ -251,7 +274,6 @@ db_dependency = Annotated[Session, Depends(get_db)]
 
 
 # ===================Whatsapp endpoints===========================
-
 
 
 
@@ -284,8 +306,8 @@ async def reply(question: Request,db: db_dependency):
             chat_response = response(text_model, vectorstore, whatsapp_prompt_template, message_body, user.age, user.learning_rate, user.communication_format, user.tone_style, chat_history)
             print("chat_response", chat_response)
             print("chat_response",type(chat_response) )
-            send_message(phone_number, chat_response)
-            summary = summarize_chat(text_model, history_summarize_prompt_template, message_body, chat_response)
+            send_message(phone_number, chat_response.get('result'))
+            summary = summarize_chat(text_model, history_summarize_prompt_template, message_body, chat_response.get('result'))
             db_query = models.WhatsappSummary(summary=summary,user_id=user.id, phone_number=local_phone_number) 
             db.add(db_query)
             db.commit()
@@ -448,18 +470,18 @@ async def create_message(message: Message, db: db_dependency, token: str = Depen
     print(chat_history)
 
     chat_response = response(text_model, vectorstore, prompt_template, message.message, user.age, user.learning_rate, user.communication_format, user.tone_style, chat_history)
-    summary = summarize_chat(text_model, history_summarize_prompt_template, message.message, chat_response)
+    summary = summarize_chat(text_model, history_summarize_prompt_template, message.message, chat_response.get('result'))
     db_query = models.Summary(summary=summary, user_id=user_id, chatbox_id=chatbox_id)
     db.add(db_query)
     db.commit()
 
     # add chat response to db
-    db_message = models.Message(message=chat_response, message_type="gpt", chatbox_id=chatbox_id, user_id=user_id)
+    db_message = models.Message(message=chat_response.get('result'), message_type="gpt", chatbox_id=chatbox_id, user_id=user_id)
     db.add(db_message)
     db.commit()
     db.refresh(db_message)
 
-    return chat_response
+    return chat_response.get('result')
 
 
 
