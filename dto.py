@@ -14,6 +14,11 @@ class Role(str, Enum):
     QUESTION = "user"
     ANSWER = "gpt"
 
+# role for users
+class UserRole(str, Enum):
+    STUDENT = "Student"
+    TUTOR = "Tutor"
+
 class UserBase(BaseModel):
     first_name: str
     last_name: str
@@ -21,14 +26,15 @@ class UserBase(BaseModel):
     password: str
     phone_number: str
     learning_rate: str = "Active"
-    role: str = "Student"
+    role: str = UserRole.STUDENT
     age:  int
     communication_format: str = "Textbook"
     tone_style: str = "Neutral"
     
 class Chatbox(BaseModel):
     chat_name: str = "to be filled"
-    user_id: int
+    user_id: int 
+   
     
     
 class Message(BaseModel):
@@ -36,6 +42,7 @@ class Message(BaseModel):
     message_type: str = Role
     chatbox_id: int
     user_id: int
+ 
     
 
 
@@ -75,3 +82,8 @@ class UserValidate(BaseModel):
             }
         }
     
+
+
+class ChatboxUpdateRequest(BaseModel):
+    chat_name: str
+    user_id: int
