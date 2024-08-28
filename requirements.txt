@@ -15,4 +15,5 @@ langchain
 openai
 python-decouple
 passlib
+markdown2
 pydantic[email]

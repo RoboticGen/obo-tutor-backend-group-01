@@ -4,7 +4,7 @@ from typing import Annotated, Optional
 from pydantic import ValidationError
 import models
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from dto import UserBase, UserLogin, Chatbox, Message, UserValidate, TokenData # ---
+from dto import UserBase, UserLogin, Chatbox, Message, UserValidate, TokenData , ChatboxUpdateRequest # ---
 from database import engine, SessionLocal
 from passlib.context import CryptContext
 import logging
@@ -33,7 +33,7 @@ from datetime import datetime, timedelta
 from fastapi.middleware.cors import CORSMiddleware
 import jwt
 from fastapi.middleware.cors import CORSMiddleware
-
+import markdown2
 
 app = FastAPI()
 
@@ -49,7 +49,7 @@ app.add_middleware(
 # google api key
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 # OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-# os.environ['OPENAI_API_KEY']=os.getenv("OPENAI_API_KEY")
+os.environ['OPENAI_API_KEY']=os.getenv("OPENAI_API_KEY")
 
 # vector data base path 
 vector_database_path = 'chroma_db/'
@@ -140,7 +140,14 @@ def load_model(model_name):
 #     llm = ChatOpenAI(model="gpt-4o")
 #     return llm
 
-text_model = load_model("gemini-pro")
+# text_model = load_model("gemini-pro")
+text_model =  ChatOpenAI(
+    model="gpt-4o",
+    temperature=0.5,
+    max_tokens=1500,
+)
+
+
 
 embedding_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 
@@ -165,10 +172,48 @@ prompt_template = """
     [Context]
     Curriculum: RoboticGen Academy, Notes Content: {context},
 
+
+
     [student question]
     {question}
 
+    If you have no context, Tell the student that you dont have the context to provide the answer.
+
+
     [tutor response]
+
+    At the bottom of the response, you should provide more sources for the student to refer to.
+
+    """
+
+whatsapp_prompt_template = """
+    You are an AI tutor. Adjust your response based on the following student profile, the chat history and the context.
+    If the student want to change the tone style or communication format, you should adjust your response accordingly.
+    Answer like a converation between a student and a tutor.If student say hi, or any greeting, you should respond accordingly.
+    You can use the context to provide the answer to the question. If you dont have the answer in the context, you can give I dont know.
+    Generate answers without exceed the curriculum content. Dont tell like in the context you provided.
+    Dont use images in the answer and limit the answer to 800 maximum characters.
+    [profile]
+    Age: {age}
+    Learning rate: {learning_rate}
+    Communication Format: {communication_format}
+    Tone Style: {tone_style}
+    previous chat history: {chat_history}
+    
+    [Context]
+    Curriculum: RoboticGen Academy, Notes Content: {context},
+
+
+
+    [student question]
+    {question}
+
+    If you have no context, Tell the student that you dont have the context to provide the answer.
+
+
+    [tutor response]
+
+    At the bottom of the response, you should provide more sources for the student to refer to.
 
     """
 
@@ -193,23 +238,6 @@ db_dependency = Annotated[Session, Depends(get_db)]
 
 
 
-@app.post("/query/llm/" , status_code=status.HTTP_200_OK)
-async def query_llm(phone_number: str, query: str, db: db_dependency):
-    user = db.query(models.User).filter(models.User.phone_number == phone_number).first()
-    quiries = db.query(models.Query).filter(models.Query.user_id == user.id).order_by(models.Query.id.desc()).offset(0).limit(20).all()
-    chat_history = ""
-    for q in quiries:
-        chat_history += q.chache_chat_summary + ","
-    print(chat_history)
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    chat_response = response(text_model, vectorstore, prompt_template, query, user.age, user.learning_rate,user.communication_format, user.tone_style , chat_history)
-
-    summary = summarize_chat(text_model, history_summarize_prompt_template, query, chat_response)
-    db_query = models.Query(question=query, answer=chat_response, user_id=user.id, chache_chat_summary=summary)
-    db.add(db_query)
-    db.commit()
-    return chat_response
 
 
 
@@ -221,41 +249,47 @@ async def query_llm(phone_number: str, query: str, db: db_dependency):
 
 
 
-#wahtsapp message paths
 
-async def check_user_exist(phone_number:str, db: db_dependency):
-
-    user = db.query(models.User).filter(models.User.phone_number == phone_number).first()
-    if user is None:
-        return False
-    return True
-
-
+# ===================Whatsapp endpoints===========================
 
 
 
 
 
 # ask question and get answer from the chatbot in the WHATSAPP 
-@app.post("/")
+@app.post("/whatsapp")
 async def reply(question: Request,db: db_dependency):
     phone_number = parse_qs(await question.body())[b'WaId'][0].decode('utf-8')
     message_body = parse_qs(await question.body())[b'Body'][0].decode('utf-8')
+
+    print(phone_number)
+    print(message_body)
+
+    local_phone_number = "0" + phone_number[2:]  
+
+    print(local_phone_number)  
+
     try:
-        user = db.query(models.User).filter(models.User.phone_number == phone_number).first()
+        user = db.query(models.User).filter(models.User.phone_number == local_phone_number).first()
+
+        print("user", user)
         
         if user is not None:
-            quiries = db.query(models.Query).filter(models.Query.user_id == user.id).order_by(models.Query.id.desc()).offset(0).limit(20).all()
+            quiries = db.query(models.WhatsappSummary).filter(models.WhatsappSummary.user_id == user.id).order_by(models.WhatsappSummary.created_at.desc()).offset(0).limit(20).all()
+            print("queries", quiries)
             chat_history = ""
             for q in quiries:
-                chat_history += q.chache_chat_summary + ","
+                chat_history += q.summary + ","
             print(chat_history)
-            chat_response = response(text_model, vectorstore, prompt_template, message_body, user.age, user.learning_rate, user.communication_format, user.tone_style, chat_history)
+            chat_response = response(text_model, vectorstore, whatsapp_prompt_template, message_body, user.age, user.learning_rate, user.communication_format, user.tone_style, chat_history)
+            print("chat_response", chat_response)
+            print("chat_response",type(chat_response) )
             send_message(phone_number, chat_response)
             summary = summarize_chat(text_model, history_summarize_prompt_template, message_body, chat_response)
-            db_query = models.Query(question=message_body, answer=chat_response, user_id=user.id, chache_chat_summary=summary)
+            db_query = models.WhatsappSummary(summary=summary,user_id=user.id, phone_number=local_phone_number) 
             db.add(db_query)
             db.commit()
+
 
 
 
@@ -292,7 +326,7 @@ async def login_user(user: UserLogin, db: db_dependency):
     
     # Generate JWT token
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_jwt_token({"sub": user_db.email}, expires_delta=access_token_expires)
+    access_token = create_jwt_token({"sub": user_db.id}, expires_delta=access_token_expires)
     
     return {
         "user_details": user_db, 
@@ -342,7 +376,7 @@ async def signup_user(user: UserBase, db: db_dependency):
     
     # Generate JWT token
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_jwt_token({"sub": user.email}, expires_delta=access_token_expires)
+    access_token = create_jwt_token({"sub": user_id}, expires_delta=access_token_expires)
     
     return {
         "user_id": user_id, 
@@ -358,8 +392,13 @@ async def signup_user(user: UserBase, db: db_dependency):
 async def create_chatbox(chatbox: Chatbox, db: db_dependency, token: str = Depends(oauth2_scheme)):
     
     payload = decode_jwt_token(token)
-    print(payload)
-    db_chatbox = models.Chatbox(**chatbox.model_dump())  
+    user_id = payload.get("sub")
+    print(user_id)
+    
+    #create chatbox
+    newChatBox = Chatbox(chat_name=chatbox.chat_name, user_id=user_id)
+    
+    db_chatbox = models.Chatbox(**newChatBox.model_dump())  
 
     db.add(db_chatbox)
     db.commit()
@@ -377,7 +416,12 @@ async def create_chatbox(chatbox: Chatbox, db: db_dependency, token: str = Depen
 async def create_message(message: Message, db: db_dependency, token: str = Depends(oauth2_scheme)):
     
     payload = decode_jwt_token(token)
-    db_message = models.Message(**message.model_dump())  
+    user_id = payload.get("sub")
+
+    newMessage = Message(message=message.message, message_type=message.message_type, chatbox_id=message.chatbox_id, user_id=user_id)
+
+
+    db_message = models.Message(**newMessage.model_dump())  
 
     db.add(db_message)
     db.commit()
@@ -444,10 +488,12 @@ async def delete_message(chat_id: int, db: db_dependency, token: str = Depends(o
 
 
 # delete user
-@app.delete("/user/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_message(user_id: int, db: db_dependency, token: str = Depends(oauth2_scheme)):
+@app.delete("/user", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_message( db: db_dependency, token: str = Depends(oauth2_scheme)):
     
     payload = decode_jwt_token(token)
+    user_id = payload.get("sub")
+
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
     
     if db_user is None:
@@ -461,10 +507,11 @@ async def delete_message(user_id: int, db: db_dependency, token: str = Depends(o
 
 # irrelavant
 # get all messages by user id
-@app.get("/messages/{chat_id}/{user_id}" , status_code=status.HTTP_200_OK)
-async def read_message(chat_id: int, user_id: int, db: db_dependency, token: str = Depends(oauth2_scheme)):
+@app.get("/messages/{chat_id}" , status_code=status.HTTP_200_OK)
+async def read_message(chat_id: int, db: db_dependency, token: str = Depends(oauth2_scheme)):
     
     payload = decode_jwt_token(token)
+    user_id = payload.get("sub")
     db_messages = db.query(models.Message).filter(
         models.Message.chatbox_id == chat_id,
         models.Message.user_id == user_id
@@ -476,11 +523,13 @@ async def read_message(chat_id: int, user_id: int, db: db_dependency, token: str
 
 
 # get all chatboxes by user id
-@app.get("/chatbox/user/{user_id}" , status_code=status.HTTP_200_OK)
-async def get_chatboxes(user_id: int, db: db_dependency, token: str = Depends(oauth2_scheme)):
+@app.get("/chatbox/user" , status_code=status.HTTP_200_OK)
+async def get_chatboxes( db: db_dependency, token: str = Depends(oauth2_scheme)):
     
     payload = decode_jwt_token(token)
-    db_chatboxes = db.query(models.Chatbox).filter(models.Chatbox.user_id == user_id).all()
+    user_id = payload.get("sub")
+
+    db_chatboxes = db.query(models.Chatbox).filter(models.Chatbox.user_id == user_id).order_by(models.Chatbox.created_at.desc()).all()
     if db_chatboxes is None:
         raise HTTPException(status_code=404, detail="Chatboxes not found")
     return db_chatboxes
@@ -494,6 +543,58 @@ async def get_chatboxes(chat_id: int, db: db_dependency, token: str = Depends(oa
     if db_chatboxes is None:
         raise HTTPException(status_code=404, detail="Chatboxes not found")
     return db_chatboxes
+
+#delete chatbox by chat id and user id
+@app.delete("/chatbox/{chat_id}" , status_code=status.HTTP_200_OK)
+async def delete_chatbox(chat_id: int, db: db_dependency, token: str = Depends(oauth2_scheme)):
+        
+        payload = decode_jwt_token(token)
+        user_id = payload.get("sub")
+
+
+        if user_id is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token or missing user ID")
+
+
+
+        print(user_id , chat_id)
+        db_chatbox = db.query(models.Chatbox).filter(models.Chatbox.id == chat_id ,models.Chatbox.user_id == user_id ).first()
+        
+        if db_chatbox is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chatbox not found")
+        
+        db.delete(db_chatbox)
+        db.commit()
+        
+        # return all chatboxes by user id
+        all_chatboxes = db.query(models.Chatbox).filter(models.Chatbox.user_id == user_id).all()
+        
+        return all_chatboxes
+
+
+#update chatboxname by chat id
+@app.put("/chatbox/{chat_id}" , status_code=status.HTTP_200_OK)
+async def update_chatbox(chat_id: int, chatbox_update: ChatboxUpdateRequest, db: db_dependency, token: str = Depends(oauth2_scheme)):
+    
+    payload = decode_jwt_token(token)
+    user_id = payload.get("sub")
+    db_chatbox = db.query(models.Chatbox).filter(models.Chatbox.id == chat_id).first()
+    
+    if db_chatbox is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chatbox not found")
+    
+    db_chatbox.chat_name = chatbox_update.chat_name
+    db_chatbox.user_id = user_id
+
+    db.commit()
+    db.flush()
+    db.refresh(db_chatbox)
+
+    # return all chatboxes by user id
+    all_chatboxes = db.query(models.Chatbox).filter(models.Chatbox.user_id == db_chatbox.user_id).all()
+    
+    return all_chatboxes
+
 
 
 

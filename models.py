@@ -6,6 +6,7 @@ from database import Base
 # from enum import Enum
 
 from dto import Role
+from dto import UserRole
 
 
 
@@ -20,15 +21,17 @@ class User(Base):
     last_name = Column(String(50))
     email = Column(String(50), unique=True)
     password = Column(String(255))
-    phone_number = Column(String(50))
+    phone_number = Column(String(50), unique=True)
     learning_rate = Column(String(50) , default="Active")
     age = Column(Integer, default=10)
+    role = Column(Enum(UserRole), default="Student")
     communication_format = Column(String(50), default="Textbook")
     tone_style = Column(String(50) , default="Neutral")
     
     chatbox = relationship('Chatbox', back_populates='user')
     message = relationship('Message', back_populates='user')
     summary = relationship('Summary', back_populates='user')
+    whatsapp_summary = relationship('WhatsappSummary', back_populates='user')
   
   
 class Chatbox(Base):
@@ -40,8 +43,8 @@ class Chatbox(Base):
     user_id = Column(Integer, ForeignKey('user.id'))
     
     user = relationship('User', back_populates='chatbox')
-    message = relationship('Message', back_populates='chatbox')
-    summary = relationship('Summary', back_populates='chatbox')
+    message = relationship('Message', back_populates='chatbox' , cascade="all, delete-orphan")
+    summary = relationship('Summary', back_populates='chatbox' ,cascade="all, delete-orphan")
     
     
 class Message(Base):
@@ -69,6 +72,17 @@ class Summary(Base):
     
     user = relationship('User', back_populates='summary')
     chatbox = relationship('Chatbox', back_populates='summary')
+
+class WhatsappSummary(Base):
+    __tablename__ = "whatsapp_summary"
+
+    id = Column(Integer, primary_key=True, index=True)
+    summary = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    user_id = Column(Integer, ForeignKey('user.id'))
+    phone_number =  Column(String(50))
+
+    user = relationship('User', back_populates='whatsapp_summary')
 
 
 
