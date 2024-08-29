@@ -235,7 +235,7 @@ whatsapp_prompt_template = """
 
 history_summarize_prompt_template = """You are an assistant tasked with summarizing text for retrieval.
 Summarize the student question and tutor answer in a concise manner.It should be a brief summary of the conversation.
-The summary should be a maximum of 200 characters.
+But include the main points of the conversation. Add the student question in the summary.
 
 student question: {human_question}
 tutor answer: {ai_answer}
