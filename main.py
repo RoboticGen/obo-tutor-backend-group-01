@@ -167,8 +167,6 @@ prompt_template = """
 
     If the student ask question from the chat history, you should provide the answer but dont give any answer outside the curriculum content.
 
-
-
     [profile]
     Age: {age} years
     Learning rate: {learning_rate}
@@ -178,8 +176,6 @@ prompt_template = """
     
     [Context]
     Curriculum: RoboticGen Academy, Notes Content: {context},
-
-
 
     [student question]
     {question}
