@@ -402,6 +402,9 @@ async def signup_user(user: UserBase, db: db_dependency):
         "access_token": access_token, 
         "token_type": "bearer"
     }
+
+
+
     
 
 
