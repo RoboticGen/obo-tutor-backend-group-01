@@ -18,6 +18,7 @@ uvicorn main:app --reload
 
 6. do to the swagger window
 
+
 type on browser
 
 http://127.0.0.1:8000/docs
