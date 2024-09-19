@@ -382,6 +382,12 @@ async def signup_user(user: UserBase, db: db_dependency):
             detail=str(e.errors()[0]['msg'])
         )
     
+    # Check if user already exists
+    user_db = db.query(models.User).filter(models.User.email == user.email).first()
+    if user_db is not None:
+        raise HTTPException(status_code=411, detail="User already exists")
+    
+    
     user.password = hash_password(user.password)
     db_user = models.User(**user.model_dump())
 
@@ -405,6 +411,38 @@ async def signup_user(user: UserBase, db: db_dependency):
 
 
 
+#get user by user id
+@app.get("/user", status_code=status.HTTP_200_OK)
+async def get_user(db: db_dependency, token: str = Depends(oauth2_scheme)):
+        
+        payload = decode_jwt_token(token)
+        user_id = payload.get("sub")
+        db_user = db.query(models.User).filter(models.User.id == user_id).first()
+        
+        if db_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        return db_user
+
+#update user tone_style , communication_format , learning_rate  by user id
+@app.put("/user", status_code=status.HTTP_200_OK)
+async def update_user(user_update: UserBase, db: db_dependency, token: str = Depends(oauth2_scheme)):
+        
+        payload = decode_jwt_token(token)
+        user_id = payload.get("sub")
+        db_user = db.query(models.User).filter(models.User.id == user_id).first()
+        
+        if db_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        db_user.tone_style = user_update.tone_style
+        db_user.communication_format = user_update.communication_format
+        db_user.learning_rate = user_update.learning_rate
+    
+        db.commit()
+        db.flush()
+        db.refresh(db_user)
+        
+        return db_user
     
 
 
@@ -469,11 +507,19 @@ async def create_message(message: Message, db: db_dependency, token: str = Depen
         chat_history += c.summary + ","
     print(chat_history)
 
-    chat_response = response(text_model, vectorstore, prompt_template, message.message, user.age, user.learning_rate, user.communication_format, user.tone_style, chat_history)
-    summary = summarize_chat(text_model, history_summarize_prompt_template, message.message, chat_response.get('result'))
-    db_query = models.Summary(summary=summary, user_id=user_id, chatbox_id=chatbox_id)
-    db.add(db_query)
-    db.commit()
+    try:
+        chat_response = response(text_model, vectorstore, prompt_template, message.message, user.age, user.learning_rate, user.communication_format, user.tone_style, chat_history)
+        summary = summarize_chat(text_model, history_summarize_prompt_template, message.message, chat_response.get('result'))
+        db_query = models.Summary(summary=summary, user_id=user_id, chatbox_id=chatbox_id)
+        db.add(db_query)
+        db.commit()
+    except:
+        chat_response = {'result': "Sorry. At this moment, I am unable to give the answer. Please Try again later", 'relevant_images':""}
+        summary = "User question: " + message.message + "AI answer: " + chat_response.get('result')
+        db_query = models.Summary(summary=summary, user_id=user_id, chatbox_id=chatbox_id)
+        db.add(db_query)
+        db.commit()
+
 
     # add chat response to db
     db_message = models.Message(message=chat_response.get('result'), message_type="gpt", chatbox_id=chatbox_id, user_id=user_id)
