@@ -57,10 +57,22 @@ class TokenData(BaseModel):
     
 class UserValidate(BaseModel):
     email: EmailStr
-    phone_number: str = Field(
-        pattern=r'^\+?\d{10,11}$'
-    )
+    phone_number: str 
     password: str = Field(..., example="P@ssw0rd")
+
+
+    @field_validator('email')
+    def validate_email(cls, value):
+        if not re.search(r'\w+@\w+\.\w+', value):
+            raise ValueError('Invalid email address')
+        return value
+    
+    @field_validator('phone_number')
+    def validate_phone_number(cls, value):
+        if not re.search(r'^\+?\d{10}$', value):
+            raise ValueError('Invalid phone number')
+        return value
+    
 
     @field_validator('password')
     def validate_password(cls, value):
