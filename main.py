@@ -1,6 +1,7 @@
 import os
 from fastapi import FastAPI,HTTPException, Depends, status,Request , Form
 from typing import Annotated, Optional
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 import models
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -52,7 +53,7 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 os.environ['OPENAI_API_KEY']=os.getenv("OPENAI_API_KEY")
 
 # vector data base path 
-vector_database_path = 'chroma_db/'
+vector_database_path = 'docs/v1/chroma/'
 
 
 # twilio api keys
@@ -149,7 +150,7 @@ text_model =  ChatOpenAI(
 
 
 
-embedding_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+embedding_model =  OpenAIEmbeddings(model="text-embedding-3-small")
 
 # load vector store
 vectorstore = load_vector_store(directory=vector_database_path, embedding_model=embedding_model)
@@ -514,27 +515,26 @@ async def create_message(message: Message, db: db_dependency, token: str = Depen
         db.add(db_query)
         db.commit()
     except:
-        chat_response = {'result': "Sorry. At this moment, I am unable to give the answer. Please Try again later", 'relevant_images':""}
-        summary = "User question: " + message.message + "AI answer: " + chat_response.get('result')
+        chat_response = {'result': "Sorry. At this moment, I am unable to give the answer. Please Try again later", 'relevant_images':[]}
+        summary = "User question: " + message.message + " AI answer: " + chat_response.get('result')
         db_query = models.Summary(summary=summary, user_id=user_id, chatbox_id=chatbox_id)
         db.add(db_query)
         db.commit()
 
+    related_images = ''
+    for img in chat_response.get('relevant_images'):
+        related_images += img + ","
+    print(related_images)
 
     # add chat response to db
-    db_message = models.Message(message=chat_response.get('result'), message_type="gpt", chatbox_id=chatbox_id, user_id=user_id)
+    db_message = models.Message(message=chat_response.get('result'), message_type="gpt", chatbox_id=chatbox_id, user_id=user_id , related_images= related_images)
     db.add(db_message)
     db.commit()
     db.refresh(db_message)
 
-    return chat_response.get('result')
+    return JSONResponse({"message": "Message created successfully", "result": chat_response.get('result') , "relevant_images": related_images} )
 
 
-
-
-    if message_id is None:
-        raise HTTPException(status_code=404, detail="Message not created")
-    return message_id  
 
 
 

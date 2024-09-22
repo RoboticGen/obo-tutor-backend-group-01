@@ -56,6 +56,8 @@ class Message(Base):
     message_type = Column(Enum(Role), default="text")
     chatbox_id = Column(Integer, ForeignKey('chatbox.id'), nullable=False)
     user_id = Column(Integer, ForeignKey('user.id'))
+    #list of images
+    related_images = Column(Text, nullable=True)
     
     chatbox = relationship('Chatbox', back_populates='message')
     user = relationship('User', back_populates='message')
