@@ -18,3 +18,4 @@ passlib
 markdown2
 pydantic[email]
 Pillow
+bcrypt
