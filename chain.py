@@ -22,9 +22,9 @@ def response(model_name, vectorstore , prompt_template, question,age, learining_
     relevant_images = []
     for d in relevant_docs:
         if d.metadata['type'] == 'text':
-            context += '[text]' + d.metadata['original_content']
+            context += '[text]' + d.page_content
         elif d.metadata['type'] == 'table':
-            context += '[table]' + d.metadata['original_content']
+            context += '[table]' + d.page_content
         elif d.metadata['type'] == 'image':
             context += '[image]' + d.page_content
             relevant_images.append(d.metadata['original_content'])
@@ -33,7 +33,7 @@ def response(model_name, vectorstore , prompt_template, question,age, learining_
                     prompt=PromptTemplate.from_template(prompt_template))
 
     result = qa_chain.run({'context': context, 'question': question,  'age': age, 'learning_rate': learining_rate, 'communication_format': communication_format, 'tone_style': tone_style, 'chat_history': chat_history})
-
+    print(relevant_images)
     
 
     return {'result': result, 'relevant_images': relevant_images}

@@ -1,6 +1,7 @@
 import os
 from fastapi import FastAPI,HTTPException, Depends, status,Request , Form
 from typing import Annotated, Optional
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 import models
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -52,7 +53,7 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 os.environ['OPENAI_API_KEY']=os.getenv("OPENAI_API_KEY")
 
 # vector data base path 
-vector_database_path = 'chroma_db/'
+vector_database_path = os.getenv("VECTOR_DATABASE_PATH")
 
 
 # twilio api keys
@@ -149,7 +150,7 @@ text_model =  ChatOpenAI(
 
 
 
-embedding_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+embedding_model =  OpenAIEmbeddings(model="text-embedding-3-small")
 
 # load vector store
 vectorstore = load_vector_store(directory=vector_database_path, embedding_model=embedding_model)
@@ -167,8 +168,6 @@ prompt_template = """
 
     If the student ask question from the chat history, you should provide the answer but dont give any answer outside the curriculum content.
 
-
-
     [profile]
     Age: {age} years
     Learning rate: {learning_rate}
@@ -178,8 +177,6 @@ prompt_template = """
     
     [Context]
     Curriculum: RoboticGen Academy, Notes Content: {context},
-
-
 
     [student question]
     {question}
@@ -198,10 +195,10 @@ whatsapp_prompt_template = """
     If the student want to change the tone style or communication format, you should adjust your response accordingly.
     Answer like a converation between a student and a tutor.If student say hi, or any greeting, you should respond accordingly.
     Strickly follow the curriculum content. Dont exceed the curriculum content.
-    You can use the context to provide the answer to the question. If you dont have the answer in the context, you can give I dont know.
+    You can use the context to provide the answer to the question. If you dont have the answer in the context, you should give I dont know.
     Dont use images in the answer and Limit the answer to 800 maximum characters.
 
-    If the student ask for a website link or a youtube video link, you should provide the link to the student.
+    If the student ask for a website link or a youtube video link, you should provide the link to the student only for roboticGen Accademy's curriculum.
 
     If the student ask question from the chat history, you should provide the answer but dont give any answer outside the curriculum content.
 
@@ -214,15 +211,16 @@ whatsapp_prompt_template = """
     previous chat history: {chat_history}
     
     [Context]
-    Curriculum: RoboticGen Academy, Notes Content: {context},
+    RoboticGen Academy's Curriculum Topics: Programming and Algorithms, Electronics and  Embedded Systems 
+    Notes Content: {context},
 
 
 
     [student question]
     {question}
 
-    If you have no context, Tell the student that you dont know the answer and Dont give any references.
-    If you have context,you should provide more sources like website links , youtube video links for the student to refer to.
+    If you have no context or out of the roboticGen academy's curriculum, Tell the student that you dont know the answer and Dont give any references.
+    If you have context or out of the roboticGen academy's curriculum,you should provide more sources like website links , youtube video links for the student to refer to.
  
 
 
@@ -235,7 +233,7 @@ whatsapp_prompt_template = """
 
 history_summarize_prompt_template = """You are an assistant tasked with summarizing text for retrieval.
 Summarize the student question and tutor answer in a concise manner.It should be a brief summary of the conversation.
-The summary should be a maximum of 200 characters.
+But include the main points of the conversation. Add the student question in the summary.
 
 student question: {human_question}
 tutor answer: {ai_answer}
@@ -385,6 +383,12 @@ async def signup_user(user: UserBase, db: db_dependency):
             detail=str(e.errors()[0]['msg'])
         )
     
+    # Check if user already exists
+    user_db = db.query(models.User).filter(models.User.email == user.email).first()
+    if user_db is not None:
+        raise HTTPException(status_code=411, detail="User already exists")
+    
+    
     user.password = hash_password(user.password)
     db_user = models.User(**user.model_dump())
 
@@ -405,6 +409,41 @@ async def signup_user(user: UserBase, db: db_dependency):
         "access_token": access_token, 
         "token_type": "bearer"
     }
+
+
+
+#get user by user id
+@app.get("/user", status_code=status.HTTP_200_OK)
+async def get_user(db: db_dependency, token: str = Depends(oauth2_scheme)):
+        
+        payload = decode_jwt_token(token)
+        user_id = payload.get("sub")
+        db_user = db.query(models.User).filter(models.User.id == user_id).first()
+        
+        if db_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        return db_user
+
+#update user tone_style , communication_format , learning_rate  by user id
+@app.put("/user", status_code=status.HTTP_200_OK)
+async def update_user(user_update: UserBase, db: db_dependency, token: str = Depends(oauth2_scheme)):
+        
+        payload = decode_jwt_token(token)
+        user_id = payload.get("sub")
+        db_user = db.query(models.User).filter(models.User.id == user_id).first()
+        
+        if db_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        db_user.tone_style = user_update.tone_style
+        db_user.communication_format = user_update.communication_format
+        db_user.learning_rate = user_update.learning_rate
+    
+        db.commit()
+        db.flush()
+        db.refresh(db_user)
+        
+        return db_user
     
 
 
@@ -469,26 +508,33 @@ async def create_message(message: Message, db: db_dependency, token: str = Depen
         chat_history += c.summary + ","
     print(chat_history)
 
-    chat_response = response(text_model, vectorstore, prompt_template, message.message, user.age, user.learning_rate, user.communication_format, user.tone_style, chat_history)
-    summary = summarize_chat(text_model, history_summarize_prompt_template, message.message, chat_response.get('result'))
-    db_query = models.Summary(summary=summary, user_id=user_id, chatbox_id=chatbox_id)
-    db.add(db_query)
-    db.commit()
+    try:
+        chat_response = response(text_model, vectorstore, prompt_template, message.message, user.age, user.learning_rate, user.communication_format, user.tone_style, chat_history)
+        summary = summarize_chat(text_model, history_summarize_prompt_template, message.message, chat_response.get('result'))
+        db_query = models.Summary(summary=summary, user_id=user_id, chatbox_id=chatbox_id)
+        db.add(db_query)
+        db.commit()
+    except:
+        chat_response = {'result': "Sorry. At this moment, I am unable to give the answer. Please Try again later", 'relevant_images':[]}
+        summary = "User question: " + message.message + " AI answer: " + chat_response.get('result')
+        db_query = models.Summary(summary=summary, user_id=user_id, chatbox_id=chatbox_id)
+        db.add(db_query)
+        db.commit()
+
+    related_images = ''
+    for img in chat_response.get('relevant_images'):
+        related_images += img + ","
+    print(related_images)
 
     # add chat response to db
-    db_message = models.Message(message=chat_response.get('result'), message_type="gpt", chatbox_id=chatbox_id, user_id=user_id)
+    db_message = models.Message(message=chat_response.get('result'), message_type="gpt", chatbox_id=chatbox_id, user_id=user_id , related_images= related_images)
     db.add(db_message)
     db.commit()
     db.refresh(db_message)
 
-    return chat_response.get('result')
+    return JSONResponse({"message": "Message created successfully", "result": chat_response.get('result') , "relevant_images": related_images} )
 
 
-
-
-    if message_id is None:
-        raise HTTPException(status_code=404, detail="Message not created")
-    return message_id  
 
 
 
