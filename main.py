@@ -277,7 +277,7 @@ db_dependency = Annotated[Session, Depends(get_db)]
 
 
 # ask question and get answer from the chatbot in the WHATSAPP 
-@app.post("/whatsapp")
+@app.post("/api/whatsapp")
 async def reply(question: Request,db: db_dependency):
     phone_number = parse_qs(await question.body())[b'WaId'][0].decode('utf-8')
     message_body = parse_qs(await question.body())[b'Body'][0].decode('utf-8')
@@ -337,7 +337,7 @@ async def reply(question: Request,db: db_dependency):
 # --TO DO--
 # password hashing and match databases hashed password
 # login
-@app.post("/login" , status_code=status.HTTP_200_OK)
+@app.post("/api/login" , status_code=status.HTTP_200_OK)
 async def login_user(user: UserLogin, db: db_dependency):
     user_db = db.query(models.User).filter(models.User.email == user.email).first()
     
@@ -363,7 +363,7 @@ async def login_user(user: UserLogin, db: db_dependency):
 
 
 # sign up
-@app.post("/signup", status_code=status.HTTP_200_OK)
+@app.post("/api/signup", status_code=status.HTTP_200_OK)
 async def signup_user(user: UserBase, db: db_dependency):
    
 
@@ -413,7 +413,7 @@ async def signup_user(user: UserBase, db: db_dependency):
 
 
 #get user by user id
-@app.get("/user", status_code=status.HTTP_200_OK)
+@app.get("/api/user", status_code=status.HTTP_200_OK)
 async def get_user(db: db_dependency, token: str = Depends(oauth2_scheme)):
         
         payload = decode_jwt_token(token)
@@ -425,7 +425,7 @@ async def get_user(db: db_dependency, token: str = Depends(oauth2_scheme)):
         return db_user
 
 #update user tone_style , communication_format , learning_rate  by user id
-@app.put("/user", status_code=status.HTTP_200_OK)
+@app.put("/api/user", status_code=status.HTTP_200_OK)
 async def update_user(user_update: UserBase, db: db_dependency, token: str = Depends(oauth2_scheme)):
         
         payload = decode_jwt_token(token)
@@ -449,7 +449,7 @@ async def update_user(user_update: UserBase, db: db_dependency, token: str = Dep
 
 
 # create chatbox
-@app.post("/chatbox", status_code=status.HTTP_200_OK)
+@app.post("/api/chatbox", status_code=status.HTTP_200_OK)
 async def create_chatbox(chatbox: Chatbox, db: db_dependency, token: str = Depends(oauth2_scheme)):
     
     payload = decode_jwt_token(token)
@@ -473,7 +473,7 @@ async def create_chatbox(chatbox: Chatbox, db: db_dependency, token: str = Depen
 
 # ask question and get answer from the chatbot in the WHATSAPP
 # create message
-@app.post("/chatbox/message", status_code=status.HTTP_200_OK)
+@app.post("/api/chatbox/message", status_code=status.HTTP_200_OK)
 async def create_message(message: Message, db: db_dependency, token: str = Depends(oauth2_scheme)):
     
     payload = decode_jwt_token(token)
@@ -539,7 +539,7 @@ async def create_message(message: Message, db: db_dependency, token: str = Depen
 
 
 # delete chatbox
-@app.delete("/chatbox/{chat_id}", status_code=status.HTTP_204_NO_CONTENT)
+@app.delete("/api/chatbox/{chat_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_message(chat_id: int, db: db_dependency, token: str = Depends(oauth2_scheme)):
     
     payload = decode_jwt_token(token)
@@ -556,7 +556,7 @@ async def delete_message(chat_id: int, db: db_dependency, token: str = Depends(o
 
 
 # delete user
-@app.delete("/user", status_code=status.HTTP_204_NO_CONTENT)
+@app.delete("/api/user", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_message( db: db_dependency, token: str = Depends(oauth2_scheme)):
     
     payload = decode_jwt_token(token)
@@ -575,7 +575,7 @@ async def delete_message( db: db_dependency, token: str = Depends(oauth2_scheme)
 
 # irrelavant
 # get all messages by user id
-@app.get("/messages/{chat_id}" , status_code=status.HTTP_200_OK)
+@app.get("/api/messages/{chat_id}" , status_code=status.HTTP_200_OK)
 async def read_message(chat_id: int, db: db_dependency, token: str = Depends(oauth2_scheme)):
     
     payload = decode_jwt_token(token)
@@ -591,7 +591,7 @@ async def read_message(chat_id: int, db: db_dependency, token: str = Depends(oau
 
 
 # get all chatboxes by user id
-@app.get("/chatbox/user" , status_code=status.HTTP_200_OK)
+@app.get("/api/chatbox/user" , status_code=status.HTTP_200_OK)
 async def get_chatboxes( db: db_dependency, token: str = Depends(oauth2_scheme)):
     
     payload = decode_jwt_token(token)
@@ -603,7 +603,7 @@ async def get_chatboxes( db: db_dependency, token: str = Depends(oauth2_scheme))
     return db_chatboxes
 
 # get all chatboxes by chat id
-@app.get("/chatbox/{chat_id}" , status_code=status.HTTP_200_OK)
+@app.get("/api/chatbox/{chat_id}" , status_code=status.HTTP_200_OK)
 async def get_chatboxes(chat_id: int, db: db_dependency, token: str = Depends(oauth2_scheme)):
     
     payload = decode_jwt_token(token)
@@ -613,7 +613,7 @@ async def get_chatboxes(chat_id: int, db: db_dependency, token: str = Depends(oa
     return db_chatboxes
 
 #delete chatbox by chat id and user id
-@app.delete("/chatbox/{chat_id}" , status_code=status.HTTP_200_OK)
+@app.delete("/api/chatbox/{chat_id}" , status_code=status.HTTP_200_OK)
 async def delete_chatbox(chat_id: int, db: db_dependency, token: str = Depends(oauth2_scheme)):
         
         payload = decode_jwt_token(token)
@@ -641,7 +641,7 @@ async def delete_chatbox(chat_id: int, db: db_dependency, token: str = Depends(o
 
 
 #update chatboxname by chat id
-@app.put("/chatbox/{chat_id}" , status_code=status.HTTP_200_OK)
+@app.put("/api/chatbox/{chat_id}" , status_code=status.HTTP_200_OK)
 async def update_chatbox(chat_id: int, chatbox_update: ChatboxUpdateRequest, db: db_dependency, token: str = Depends(oauth2_scheme)):
     
     payload = decode_jwt_token(token)
