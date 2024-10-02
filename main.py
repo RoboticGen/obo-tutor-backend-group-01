@@ -53,7 +53,7 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 os.environ['OPENAI_API_KEY']=os.getenv("OPENAI_API_KEY")
 
 # vector data base path 
-vector_database_path = 'docs/v1/chroma/'
+vector_database_path = os.getenv("VECTOR_DATABASE_PATH")
 
 
 # twilio api keys
