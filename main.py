@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 import models
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from dto import UserBase, UserLogin, Chatbox, Message, UserValidate, TokenData , ChatboxUpdateRequest # ---
+from dto import UserBase, UserLogin, Chatbox, Message, UserValidate, TokenData , ChatboxUpdateRequest , UserBaseAdmin # ---
 from database import engine, SessionLocal
 from passlib.context import CryptContext
 import logging
@@ -158,7 +158,9 @@ vectorstore = load_vector_store(directory=vector_database_path, embedding_model=
 #prompt template
 prompt_template = """
     You are an AI tutor. Adjust your response based on the following student profile, the chat history and the context.
-    If the student want to change the tone style or communication format, you should adjust your response accordingly.
+
+    Adjust the your response according to chat history and profile details.
+
     Answer like a converation between a student and a teacher.If student say hi, or any greeting, you should respond accordingly.
     Strickly follow the curriculum content. Dont exceed the curriculum content.
     You can use the context to provide the answer to the question. If you dont have the answer in the context, you can give I dont know.
@@ -169,10 +171,19 @@ prompt_template = """
     If the student ask question from the chat history, you should provide the answer but dont give any answer outside the curriculum content.
 
     [profile]
-    Age: {age} years
-    Learning rate: {learning_rate}
-    Communication Format: {communication_format}
+    Age: {age}
+    Communication Rating: {communication_rating}
+    Leadership Rating: {leadership_rating}
+    Behaviour Rating: {behaviour_rating}
+    Responsiveness Rating: {responsiveness_rating}
+    Difficult Concepts: {difficult_concepts}
+    Understood Concepts: {understood_concepts}
+    Activity Summary: {activity_summary}
+
+    [Profile Tone]
     Tone Style: {tone_style}
+
+    [chat history]
     previous chat history: {chat_history}
     
     [Context]
@@ -192,9 +203,12 @@ prompt_template = """
 
 whatsapp_prompt_template = """
     You are an AI tutor. Adjust your response based on the following student profile, the chat history and the context.
-    If the student want to change the tone style or communication format, you should adjust your response accordingly.
+    
+    Adjust the your response according to chat history and profile details.
+
     Answer like a converation between a student and a tutor.If student say hi, or any greeting, you should respond accordingly.
     Strickly follow the curriculum content. Dont exceed the curriculum content.
+
     You can use the context to provide the answer to the question. If you dont have the answer in the context, you should give I dont know.
     Dont use images in the answer and Limit the answer to 800 maximum characters.
 
@@ -205,9 +219,18 @@ whatsapp_prompt_template = """
 
     [profile]
     Age: {age}
-    Learning rate: {learning_rate}
-    Communication Format: {communication_format}
+    Communication Rating: {communication_rating}
+    Leadership Rating: {leadership_rating}
+    Behaviour Rating: {behaviour_rating}
+    Responsiveness Rating: {responsiveness_rating}
+    Difficult Concepts: {difficult_concepts}
+    Understood Concepts: {understood_concepts}
+    Activity Summary: {activity_summary}
+
+    [Profile Tone]
     Tone Style: {tone_style}
+
+    [chat history]
     previous chat history: {chat_history}
     
     [Context]
@@ -301,7 +324,8 @@ async def reply(question: Request,db: db_dependency):
             for q in quiries:
                 chat_history += q.summary + ","
             print(chat_history)
-            chat_response = response(text_model, vectorstore, whatsapp_prompt_template, message_body, user.age, user.learning_rate, user.communication_format, user.tone_style, chat_history)
+            chat_response = response(text_model, vectorstore, whatsapp_prompt_template, message_body, user.age, user.activity_summary, user.communication_rating, user.leadership_rating, user.behaviour_rating, user.responsiveness_rating, user.difficult_concepts, user.understood_concepts, user.tone_style, chat_history)
+            
             print("chat_response", chat_response)
             print("chat_response",type(chat_response) )
             send_message(phone_number, chat_response.get('result'))
@@ -353,7 +377,28 @@ async def login_user(user: UserLogin, db: db_dependency):
         "access_token": access_token, 
         "token_type": "bearer"
     }
+
+
+@app.post("/api/admin/login" , status_code=status.HTTP_200_OK)
+async def login_user(user: UserLogin, db: db_dependency):
+   
     
+    if( user.email == "admin@gmail.com" and user.password == "adminObotutor123$"):
+    
+    # Generate JWT token
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_jwt_token({"sub": user.email}, expires_delta=access_token_expires)
+        
+        
+        return {
+            "user_details": user.email, 
+            "access_token": access_token, 
+            "token_type": "bearer"
+        }
+    else:
+        raise HTTPException(status_code=404, detail="Invalid Credentials")
+    
+
 
 
 
@@ -436,15 +481,48 @@ async def update_user(user_update: UserBase, db: db_dependency, token: str = Dep
             raise HTTPException(status_code=404, detail="User not found")
         
         db_user.tone_style = user_update.tone_style
-        db_user.communication_format = user_update.communication_format
-        db_user.learning_rate = user_update.learning_rate
+        db_user.communication_rating = user_update.communication_rating
+        db_user.leadership_rating = user_update.leadership_rating
+        db_user.behaviour_rating = user_update.behaviour_rating
+        db_user.responsiveness_rating = user_update.responsiveness_rating
+        db_user.difficult_concepts = user_update.difficult_concepts
+        db_user.understood_concepts = user_update.understood_concepts
+        db_user.activity_summary = user_update.activity_summary
+        db_user.age = user_update.age
+    
     
         db.commit()
         db.flush()
         db.refresh(db_user)
         
         return db_user
+
+#update admin  user tone_style , communication_format , learning_rate  by user id
+@app.put("/api/admin/user", status_code=status.HTTP_200_OK)
+async def update_user(user_update: UserBaseAdmin, db: db_dependency, token: str = Depends(oauth2_scheme)):
+        
+        payload = decode_jwt_token(token)
+        user_id = user_update.id
+        db_user = db.query(models.User).filter(models.User.id == user_id).first()
+        
+        if db_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+       
+        db_user.communication_rating = user_update.communication_rating
+        db_user.leadership_rating = user_update.leadership_rating
+        db_user.behaviour_rating = user_update.behaviour_rating
+        db_user.responsiveness_rating = user_update.responsiveness_rating
+        db_user.difficult_concepts = user_update.difficult_concepts
+        db_user.understood_concepts = user_update.understood_concepts
+        db_user.activity_summary = user_update.activity_summary
+     
     
+        db.commit()
+        db.flush()
+        db.refresh(db_user)
+        
+        return db_user
 
 
 
@@ -509,12 +587,13 @@ async def create_message(message: Message, db: db_dependency, token: str = Depen
     print(chat_history)
 
     try:
-        chat_response = response(text_model, vectorstore, prompt_template, message.message, user.age, user.learning_rate, user.communication_format, user.tone_style, chat_history)
+        chat_response = response(text_model, vectorstore, prompt_template, message.message, user.age, user.activity_summary, user.communication_rating, user.leadership_rating, user.behaviour_rating, user.responsiveness_rating, user.difficult_concepts, user.understood_concepts, user.tone_style, chat_history)
         summary = summarize_chat(text_model, history_summarize_prompt_template, message.message, chat_response.get('result'))
         db_query = models.Summary(summary=summary, user_id=user_id, chatbox_id=chatbox_id)
         db.add(db_query)
         db.commit()
-    except:
+    except Exception as e:
+        print("error" , e)
         chat_response = {'result': "Sorry. At this moment, I am unable to give the answer. Please Try again later", 'relevant_images':[]}
         summary = "User question: " + message.message + " AI answer: " + chat_response.get('result')
         db_query = models.Summary(summary=summary, user_id=user_id, chatbox_id=chatbox_id)
@@ -678,3 +757,6 @@ async def update_chatbox(chat_id: int, chatbox_update: ChatboxUpdateRequest, db:
 #         return response.json()
 #     else:
 #         return {"error": response.text}
+
+
+
