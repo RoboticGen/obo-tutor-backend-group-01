@@ -22,10 +22,17 @@ class User(Base):
     email = Column(String(50), unique=True)
     password = Column(String(255))
     phone_number = Column(String(50), unique=True)
-    learning_rate = Column(String(50) , default="Active")
+    communication_rating = Column(Integer, default=5)
+    leadership_rating = Column(Integer, default=5)
+    behaviour_rating = Column(Integer, default=5)
+    responsiveness_rating = Column(Integer, default=5)
+    difficult_concepts =  Column(Text, nullable=True)
+    understood_concepts =  Column(Text, nullable=True)
+    activity_summary = Column(Text, nullable=True)
+
     age = Column(Integer, default=10)
     role = Column(Enum(UserRole), default="Student")
-    communication_format = Column(String(50), default="Textbook")
+    
     tone_style = Column(String(50) , default="Neutral")
     
     chatbox = relationship('Chatbox', back_populates='user')

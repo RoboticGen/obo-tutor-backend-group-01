@@ -25,11 +25,27 @@ class UserBase(BaseModel):
     email: str
     password: str
     phone_number: str
-    learning_rate: str = "Active"
     role: str = UserRole.STUDENT
     age:  int
-    communication_format: str = "Textbook"
-    tone_style: str = "Neutral"
+    communication_rating: int
+    leadership_rating: int
+    behaviour_rating: int
+    responsiveness_rating: int
+    difficult_concepts: str
+    understood_concepts: str
+    activity_summary: str
+    tone_style: str
+
+class UserBaseAdmin(BaseModel):
+    id: int
+    communication_rating: int
+    leadership_rating: int
+    behaviour_rating: int
+    responsiveness_rating: int
+    difficult_concepts: str
+    understood_concepts: str
+    activity_summary: str
+  
     
 class Chatbox(BaseModel):
     chat_name: str = "to be filled"
