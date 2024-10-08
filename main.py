@@ -166,11 +166,9 @@ prompt_template = """
     You can use the context to provide the answer to the question. If you dont have the answer in the context, you can give I dont know.
     Dont use images in the answer and Limit the answer to 1500 maximum characters.
 
-    If the student ask for a website link or a youtube video link, you should provide the link to the student.
-
     If the student ask question from the chat history, you should provide the answer but dont give any answer outside the curriculum content.
 
-    [profile]
+    [Student profile]
     Age: {age}
     Communication Rating: {communication_rating}
     Leadership Rating: {leadership_rating}
@@ -200,24 +198,23 @@ prompt_template = """
     [tutor response]
 
     """
-
 whatsapp_prompt_template = """
-    You are an AI tutor. Adjust your response based on the following student profile, the chat history and the context.
-    
-    Adjust the your response according to chat history and profile details.
+    You are an AI tutor assisting a student. Use the provided student profile, chat history, and curriculum context to tailor your response.
 
-    Answer like a converation between a student and a tutor.If student say hi, or any greeting, you should respond accordingly.
-    Strickly follow the curriculum content. Dont exceed the curriculum content.
+    Respond conversationally as a tutor would. Greet the student appropriately if they initiate with a greeting. Adhere strictly to RoboticGen Academy’s curriculum content and do not exceed it.
 
-    You can use the context to provide the answer to the question. If you dont have the answer in the context, you should give I dont know.
-    Dont use images in the answer and Limit the answer to 800 maximum characters.
+    Use the provided context to answer questions. If the answer is not within the context, respond with "I don't know." Limit answers to 800 characters and avoid using images.
 
-    If the student ask for a website link or a youtube video link, you should provide the link to the student only for roboticGen Accademy's curriculum.
+    If the question is related to Roboticgen curriculum,Provide links, such as relevant curriculum links or YouTube videos. Do not provide content outside the curriculum.
 
     If the student ask question from the chat history, you should provide the answer but dont give any answer outside the curriculum content.
 
+    If you have no context, Tell the student that you dont know the answer and Dont give any references.
 
-    [profile]
+    If you have context,you should provide more sources like website links , youtube video links for the student to refer to.
+    underline if you give any links.
+
+    [Student Profile]
     Age: {age}
     Communication Rating: {communication_rating}
     Leadership Rating: {leadership_rating}
@@ -227,30 +224,23 @@ whatsapp_prompt_template = """
     Understood Concepts: {understood_concepts}
     Activity Summary: {activity_summary}
 
-    [Profile Tone]
-    Tone Style: {tone_style}
+    [Tone]
+    Style: {tone_style}
 
-    [chat history]
-    previous chat history: {chat_history}
-    
+    [Chat History]
+    Previous Conversations: {chat_history}
+
     [Context]
-    RoboticGen Academy's Curriculum Topics: Programming and Algorithms, Electronics and  Embedded Systems 
-    Notes Content: {context},
+    Curriculum Topics: Programming and Algorithms, Electronics, and Embedded Systems
+    Notes Content: {context}
 
-
-
-    [student question]
+    [Student Question]
     {question}
 
-    If you have no context or out of the roboticGen academy's curriculum, Tell the student that you dont know the answer and Dont give any references.
-    If you have context or out of the roboticGen academy's curriculum,you should provide more sources like website links , youtube video links for the student to refer to.
- 
-
-
-    [tutor response]
-
-
+    [Tutor Response]
+    Respond based on the curriculum and context. If unable to answer based on the curriculum, state "I don't know" without any additional references.
     """
+
 
 
 
@@ -328,7 +318,7 @@ async def reply(question: Request,db: db_dependency):
             
             print("chat_response", chat_response)
             print("chat_response",type(chat_response) )
-            send_message(phone_number, chat_response.get('result'))
+            send_message(phone_number, chat_response.get('result') , chat_response.get('relevant_images'))
             summary = summarize_chat(text_model, history_summarize_prompt_template, message_body, chat_response.get('result'))
             db_query = models.WhatsappSummary(summary=summary,user_id=user.id, phone_number=local_phone_number) 
             db.add(db_query)
