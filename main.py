@@ -190,8 +190,9 @@ prompt_template = """
     [student question]
     {question}
 
-    If you have no context, Tell the student that you dont know the answer and Dont give any references.
-    If you have context,you should provide more sources like website links , youtube video links for the student to refer to.
+    If you have no context or outside the curriculum , Tell straightly that I dont know the answer and Dont give any references.
+
+    If the question is related to the curriculum,you should provide more sources like website links , youtube video links for the student to refer to.
     underline if you give any links.
    
 
@@ -209,9 +210,9 @@ whatsapp_prompt_template = """
 
     If the student ask question from the chat history, you should provide the answer but dont give any answer outside the curriculum content.
 
-    If you have no context, Tell the student that you dont know the answer and Dont give any references.
+    If you have no context or outside the curriculum , Tell straightly that I dont know the answer and Dont give any references.
 
-    If you have context,you should provide more sources like website links , youtube video links for the student to refer to.
+    If the question is related to the curriculum,you should provide more sources like website links , youtube video links for the student to refer to.
     underline if you give any links.
 
     [Student Profile]
@@ -728,7 +729,7 @@ async def update_chatbox(chat_id: int, chatbox_update: ChatboxUpdateRequest, db:
     db.refresh(db_chatbox)
 
     # return all chatboxes by user id
-    all_chatboxes = db.query(models.Chatbox).filter(models.Chatbox.user_id == db_chatbox.user_id).all()
+    all_chatboxes = db.query(models.Chatbox).filter(models.Chatbox.user_id == db_chatbox.user_id).order_by(models.Chatbox.created_at.desc()).all()
     
     return all_chatboxes
 
