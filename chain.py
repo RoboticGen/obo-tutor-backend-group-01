@@ -17,7 +17,7 @@ def load_vector_store(directory, embedding_model):
     return vectorstore
 
 def response(model_name, vectorstore , prompt_template, question,age,activity_summary, communication_rating,leadership_rating,behaviour_rating,responsiveness_rating,difficult_concepts,understood_concepts,tone_style ,chat_history  ):
-    relevant_docs = vectorstore.similarity_search(question)
+    relevant_docs = vectorstore.similarity_search(question , k = 5)
     context = ""
     relevant_images = []
     for d in relevant_docs:
