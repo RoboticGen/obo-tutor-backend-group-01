@@ -153,7 +153,7 @@ text_model =  ChatOpenAI(
 embedding_model =  OpenAIEmbeddings(model="text-embedding-3-small")
 
 # load vector store
-vectorstore = load_vector_store(directory=vector_database_path, embedding_model=embedding_model)
+# vectorstore = load_vector_store(directory=vector_database_path, embedding_model=embedding_model)
 
 #prompt template
 prompt_template = """
@@ -315,6 +315,7 @@ async def reply(question: Request,db: db_dependency):
             for q in quiries:
                 chat_history += q.summary + ","
             print(chat_history)
+            vectorstore = load_vector_store(directory=vector_database_path, embedding_model=embedding_model)
             chat_response = response(text_model, vectorstore, whatsapp_prompt_template, message_body, user.age, user.activity_summary, user.communication_rating, user.leadership_rating, user.behaviour_rating, user.responsiveness_rating, user.difficult_concepts, user.understood_concepts, user.tone_style, chat_history)
             
             print("chat_response", chat_response)
@@ -578,6 +579,7 @@ async def create_message(message: Message, db: db_dependency, token: str = Depen
     print(chat_history)
 
     try:
+        vectorstore = load_vector_store(directory=vector_database_path, embedding_model=embedding_model)
         chat_response = response(text_model, vectorstore, prompt_template, message.message, user.age, user.activity_summary, user.communication_rating, user.leadership_rating, user.behaviour_rating, user.responsiveness_rating, user.difficult_concepts, user.understood_concepts, user.tone_style, chat_history)
         summary = summarize_chat(text_model, history_summarize_prompt_template, message.message, chat_response.get('result'))
         db_query = models.Summary(summary=summary, user_id=user_id, chatbox_id=chatbox_id)
