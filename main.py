@@ -349,6 +349,9 @@ async def reply(question: Request,db: db_dependency):
 
 # ======================== API ENDPOINTS ========================
 
+@app.get("/")
+def read_root():
+    return "Server is running"
 
 # --TO DO--
 # password hashing and match databases hashed password
@@ -449,7 +452,7 @@ async def signup_user(user: UserBase, db: db_dependency):
 
 
 
-#get user by user id
+#get user by JWT token's id (last loged one)
 @app.get("/api/user", status_code=status.HTTP_200_OK)
 async def get_user(db: db_dependency, token: str = Depends(oauth2_scheme)):
         

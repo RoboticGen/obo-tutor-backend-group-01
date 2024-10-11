@@ -20,3 +20,5 @@ pydantic[email]
 Pillow
 bcrypt
 mysqlclient
+httpx
+pytest
