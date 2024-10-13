@@ -124,8 +124,28 @@ def test_login_successful():
     # Assertions for a successful login
     assert response.status_code == 200
     respond = response.json()
-    assert "access_token" in response.json()
+    assert "access_token" in respond
     assert response.json()["user_details"]["email"] == "abc@gmail.com"
+        
+    teardown()
+    
+    
+def test_login_failure():
+    setup()
+    
+    add_fake_user_to_db()
+    # Test input: valid user credentials
+    user_data = {
+        "email": "abc@gmail.com",
+        "password": "wrong_password"
+    }
+    
+    # Send POST request to the login endpoint
+    response = client.post("/api/login", json=user_data)
+    
+    # Assertions for a failure login
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Invalid Credentials"
         
     teardown()
     
