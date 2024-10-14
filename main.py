@@ -296,30 +296,30 @@ async def reply(question: Request,db: db_dependency):
     phone_number = parse_qs(await question.body())[b'WaId'][0].decode('utf-8')
     message_body = parse_qs(await question.body())[b'Body'][0].decode('utf-8')
 
-    print(phone_number)
-    print(message_body)
+    # print(phone_number)
+    # print(message_body)
 
     local_phone_number = "0" + phone_number[2:]  
 
-    print(local_phone_number)  
+    # print(local_phone_number)  
 
     try:
         user = db.query(models.User).filter(models.User.phone_number == local_phone_number).first()
 
-        print("user", user)
+        # print("user", user)
         
         if user is not None:
             quiries = db.query(models.WhatsappSummary).filter(models.WhatsappSummary.user_id == user.id).order_by(models.WhatsappSummary.created_at.desc()).offset(0).limit(20).all()
-            print("queries", quiries)
+            # print("queries", quiries)
             chat_history = ""
             for q in quiries:
                 chat_history += q.summary + ","
-            print(chat_history)
+            # print(chat_history)
             vectorstore = load_vector_store(directory=vector_database_path, embedding_model=embedding_model)
             chat_response = response(text_model, vectorstore, whatsapp_prompt_template, message_body, user.age, user.activity_summary, user.communication_rating, user.leadership_rating, user.behaviour_rating, user.responsiveness_rating, user.difficult_concepts, user.understood_concepts, user.tone_style, chat_history)
             
-            print("chat_response", chat_response)
-            print("chat_response",type(chat_response) )
+            # print("chat_response", chat_response)
+            # print("chat_response",type(chat_response) )
             send_message(phone_number, chat_response.get('result') , chat_response.get('relevant_images'))
             summary = summarize_chat(text_model, history_summarize_prompt_template, message_body, chat_response.get('result'))
             db_query = models.WhatsappSummary(summary=summary,user_id=user.id, phone_number=local_phone_number) 
@@ -456,6 +456,8 @@ async def signup_user(user: UserBase, db: db_dependency):
 @app.get("/api/user", status_code=status.HTTP_200_OK)
 async def get_user(db: db_dependency, token: str = Depends(oauth2_scheme)):
         
+        print(f"Token received: {token}")
+        
         payload = decode_jwt_token(token)
         user_id = payload.get("sub")
         db_user = db.query(models.User).filter(models.User.id == user_id).first()
@@ -463,6 +465,8 @@ async def get_user(db: db_dependency, token: str = Depends(oauth2_scheme)):
         if db_user is None:
             raise HTTPException(status_code=404, detail="User not found")
         return db_user
+
+
 
 #update user tone_style , communication_format , learning_rate  by user id
 @app.put("/api/user", status_code=status.HTTP_200_OK)
@@ -491,6 +495,8 @@ async def update_user(user_update: UserBase, db: db_dependency, token: str = Dep
         db.refresh(db_user)
         
         return db_user
+    
+    
 
 #update admin  user tone_style , communication_format , learning_rate  by user id
 @app.put("/api/admin/user", status_code=status.HTTP_200_OK)

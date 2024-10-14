@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 from passlib.context import CryptContext
 from sqlalchemy import StaticPool, create_engine
 from sqlalchemy.orm import sessionmaker 
-from main import app, get_db
+from main import app, decode_jwt_token, get_db
 from database import Base
 import models
 
@@ -20,6 +20,15 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 client = TestClient(app)
 
+# Mock the decode_jwt_token to return a fake user ID
+def mock_decode_jwt_token(token: str):
+    return {"sub": 1}  # Return the user ID 1
+
+# Override the JWT decoding function
+app.dependency_overrides[decode_jwt_token] = mock_decode_jwt_token
+
+
+# Mock the get_db to return a sqllite memory database
 def override_get_db():
     db = TestingSessionLocal()
     try:
@@ -36,8 +45,8 @@ def add_fake_user_to_db():
     # Create a user in the test database
     db = TestingSessionLocal()
     user = models.User(
-        first_name="Pasindu",
-        last_name="Sankalpa",
+        first_name="Kavindu",
+        last_name="Senarathna",
         email="abc@gmail.com",
         password=pwd_context.hash("123abcABC"),
         phone_number="0702225222",
@@ -60,12 +69,13 @@ def test_read_root():
     response = client.get("/")
     assert response.status_code == 200
     assert response.json() == "Server is running"
+    print("\nTest 1 : root api work successfully", end="")
     
 def test_signup():
     setup()
     input_data = {
-        "first_name": "Pasindu",
-        "last_name": "Sankalpa",
+        "first_name": "Kavindu",
+        "last_name": "Senarathna",
         "email": "abc@gmail.com",
         "password": "123abcABC",
         "phone_number": "0702225222",
@@ -87,6 +97,8 @@ def test_signup():
     assert respond["user_id"] == 1
     
     teardown()
+    print("\nTest 2 : signup succesfully", end="")
+    
     
     
 def test_whatsapp():
@@ -105,7 +117,10 @@ def test_whatsapp():
 
     # Assert that the response is successful
     assert response.status_code == 200
+    
     teardown()
+    print("\nTest 3 : sending whatsapp message successfully", end="")
+    
     
     
 def test_login_successful():
@@ -128,6 +143,7 @@ def test_login_successful():
     assert response.json()["user_details"]["email"] == "abc@gmail.com"
         
     teardown()
+    print("\nTest 4 : login succesfully", end="")
     
     
 def test_login_failure():
@@ -148,8 +164,24 @@ def test_login_failure():
     assert response.json()["detail"] == "Invalid Credentials"
         
     teardown()
+    print("\nTest 5 : login failure", end="")
     
+# Test for successful user retrieval
+# def test_get_user_success():
+#     setup()
+#     add_fake_user_to_db()
+#     # Simulated token (it doesn't need to be valid since we're mocking the decode function)
+#     token = "fake_token"
+
+#     response = client.get("/api/user", headers={"Authorization": f"Bearer {token}"})
     
+#     print(f"Request headers: {response.request.headers}")
+#     # Assertions for a successful user retrieval
+#     assert response.status_code == 200
+#     assert response.json()["email"] == "testuser@example.com"
+#     assert response.json()["id"] == 1
+    
+#     teardown()
 
 
 def setup():
