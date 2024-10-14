@@ -735,7 +735,69 @@ async def update_chatbox(chat_id: int, chatbox_update: ChatboxUpdateRequest, db:
     
     return all_chatboxes
 
+#get student_id by email 
+@app.get("/api/student/{email}" , status_code=status.HTTP_200_OK)
+async def get_student(email: str, db: db_dependency, token: str = Depends(oauth2_scheme)):
+    
+    payload = decode_jwt_token(token)
+    user_id = payload.get("sub")
+    db_user = db.query(models.User).filter(models.User.email == email).first()
+    
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return db_user
 
+#get all students with email without token
+# @app.get("/api/students" , status_code=status.HTTP_200_OK)
+# async def get_students(db: db_dependency):
+        
+#         db_users = db.query(models.User).all()
+#         if db_users is None:
+#             raise HTTPException(status_code=404, detail="Users not found")
+#         return db_users
+
+#get all students with email with token
+@app.get("/api/students" , status_code=status.HTTP_200_OK)
+async def get_students(db: db_dependency, token: str = Depends(oauth2_scheme)):
+    
+    payload = decode_jwt_token(token)
+    user_id = payload.get("sub")
+    db_users = db.query(models.User).all()
+    if db_users is None:
+        raise HTTPException(status_code=404, detail="Users not found")
+    return db_users
+
+#delete student by email
+@app.delete("/api/student/{email}" , status_code=status.HTTP_200_OK)
+async def delete_student(email: str, db: db_dependency, token: str = Depends(oauth2_scheme)):
+    
+    payload = decode_jwt_token(token)
+    user_id = payload.get("sub")
+    db_user = db.query(models.User).filter(models.User.email == email).first()
+    
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    db.delete(db_user)
+    db.commit()
+    
+    return {"detail": "User deleted successfully"}
+
+#delete student by id
+@app.delete("/api/student/id/{id}" , status_code=status.HTTP_200_OK)
+async def delete_student(id: int, db: db_dependency, token: str = Depends(oauth2_scheme)):
+    
+    payload = decode_jwt_token(token)
+    user_id = payload.get("sub")
+    db_user = db.query(models.User).filter(models.User.id == id).first()
+    
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    db.delete(db_user)
+    db.commit()
+    
+    return {"detail": "User deleted successfully"}
 
 
 # from fastapi.testclient import TestClient
