@@ -33,7 +33,7 @@ class User(Base):
     age = Column(Integer, default=10)
     role = Column(Enum(UserRole), default="Student")
     
-    tone_style = Column(String(50) , default="Neutral")
+    tone_style = Column(String(50) , default="Friendly")
     
     chatbox = relationship('Chatbox', back_populates='user')
     message = relationship('Message', back_populates='user')
