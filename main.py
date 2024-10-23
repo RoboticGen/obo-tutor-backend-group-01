@@ -192,7 +192,7 @@ prompt_template = """
 
     If you have no context or outside the curriculum , Tell straightly that I dont know the answer and Dont give any references.
 
-    If the question is related to the curriculum,you should provide more sources like website links , youtube video links for the student to refer to.
+    If the question is related to the curriculum,you should provide at least two more sources like website links for the student to refer to this section.
     underline if you give any links.
    
 
