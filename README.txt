@@ -1,3 +1,6 @@
+
+To check out the model follow this link: http://2.obotutor.roboticgenacademy.com/
+
 main.py is the backend part. Run only model.py 
 
 To run it.
