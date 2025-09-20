@@ -5,16 +5,17 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 import models
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from dto import UserBase, UserLogin, Chatbox, Message, UserValidate, TokenData , ChatboxUpdateRequest , UserBaseAdmin # ---
+from dto import UserBase, UserLogin, Chatbox, ChatboxRequest, Message, UserValidate, TokenData , ChatboxUpdateRequest , UserBaseAdmin # ---
 from database import engine, SessionLocal
 from passlib.context import CryptContext
 import logging
 from twilio.rest import Client
 from urllib.parse import parse_qs
 
-from openai import OpenAI
-from langchain_openai import ChatOpenAI
-from langchain_openai import OpenAIEmbeddings
+# Removed OpenAI and LangChain imports since ML Model service handles AI processing
+# from openai import OpenAI
+# from langchain_openai import ChatOpenAI
+# from langchain_openai import OpenAIEmbeddings
 
 from sqlalchemy.orm import Session
 from sqlalchemy import asc , desc
@@ -23,12 +24,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from twillio import send_message
-from chain import response
-from chain import load_vector_store
-from chain import summarize_chat
+from ml_model_service import ml_model_service
 
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_google_genai import ChatGoogleGenerativeAI
+# Removed LangChain imports since ML Model service handles AI processing
+# from langchain_google_genai import GoogleGenerativeAIEmbeddings
+# from langchain_google_genai import ChatGoogleGenerativeAI
 
 from datetime import datetime, timedelta
 from fastapi.middleware.cors import CORSMiddleware
@@ -47,13 +47,10 @@ app.add_middleware(
 )
 
 
-# google api key
+# google api key (not used directly anymore but kept for compatibility)
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 # OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 os.environ['OPENAI_API_KEY']=os.getenv("OPENAI_API_KEY")
-
-# vector data base path 
-vector_database_path = os.getenv("VECTOR_DATABASE_PATH")
 
 
 # twilio api keys
@@ -115,6 +112,16 @@ def decode_jwt_token(token: str):
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+def get_user_id_from_token(payload: dict) -> int:
+    """Extract user_id from JWT payload and convert to int"""
+    user_id_str = payload.get("sub")
+    if user_id_str is None:
+        raise HTTPException(status_code=401, detail="Invalid token - no user ID")
+    try:
+        return int(user_id_str)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid token - malformed user ID")
+
 
 
 
@@ -127,30 +134,86 @@ def get_db():
         db.close()
 
 
+# Admin privilege checking functions
+def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    """Get current user from JWT token"""
+    payload = decode_jwt_token(token)
+    user_id = get_user_id_from_token(payload)
+    
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    # Handle both user ID (for regular users) and email (for hardcoded admin)
+    if isinstance(user_id, str) and "@" in user_id:
+        # This is the hardcoded admin login
+        if user_id == "admin@gmail.com":
+            # Return a mock admin user object for hardcoded admin
+            class MockAdmin:
+                def __init__(self):
+                    self.id = 0
+                    self.email = "admin@gmail.com"
+                    self.role = "Admin"
+                    self.first_name = "Hardcoded"
+                    self.last_name = "Admin"
+            return MockAdmin()
+    else:
+        # This is a regular user login
+        user = db.query(models.User).filter(models.User.id == user_id).first()
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        return user
+    
+    raise HTTPException(status_code=401, detail="Invalid token")
+
+
+def get_admin_user(current_user = Depends(get_current_user)):
+    """Check if current user is admin"""
+    if hasattr(current_user, 'role') and current_user.role == "Admin":
+        return current_user
+    elif hasattr(current_user, 'email') and current_user.email == "admin@gmail.com":
+        return current_user
+    else:
+        raise HTTPException(status_code=403, detail="Admin privileges required")
+
+
+def is_admin_or_self(current_user = Depends(get_current_user), target_user_id: int = None):
+    """Check if user is admin or accessing their own data"""
+    # Admin can access anything
+    if hasattr(current_user, 'role') and current_user.role == "Admin":
+        return True
+    elif hasattr(current_user, 'email') and current_user.email == "admin@gmail.com":
+        return True
+    # Regular users can only access their own data
+    elif target_user_id and hasattr(current_user, 'id') and current_user.id == target_user_id:
+        return True
+    else:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+
+
+# The following functions and variables are no longer used since ML Model service handles AI processing
+# Keeping them commented for reference in case of rollback
 
 # load gemini pro model
-def load_model(model_name):
-  if model_name=="gemini-pro":
-    llm = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key= GOOGLE_API_KEY)
-  else:
-    llm=ChatGoogleGenerativeAI(model="gemini-pro-vision" , google_api_key= GOOGLE_API_KEY)
-
-  return llm
+# def load_model(model_name):
+#   if model_name=="gemini-pro":
+#     llm = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key= GOOGLE_API_KEY)
+#   else:
+#     llm=ChatGoogleGenerativeAI(model="gemini-pro-vision" , google_api_key= GOOGLE_API_KEY)
+#   return llm
 
 # def load_model():
 #     llm = ChatOpenAI(model="gpt-4o")
 #     return llm
 
 # text_model = load_model("gemini-pro")
-text_model =  ChatOpenAI(
-    model="gpt-4o-mini",
-    temperature=0.5,
-    max_tokens=1500,
-)
+# text_model =  ChatOpenAI(
+#     model="gpt-4o-mini",
+#     temperature=0.5,
+#     max_tokens=1500,
+# )
 
-
-
-embedding_model =  OpenAIEmbeddings(model="text-embedding-3-small")
+# embedding_model =  OpenAIEmbeddings(model="text-embedding-3-small")
 
 # load vector store
 # vectorstore = load_vector_store(directory=vector_database_path, embedding_model=embedding_model)
@@ -315,13 +378,16 @@ async def reply(question: Request,db: db_dependency):
             for q in quiries:
                 chat_history += q.summary + ","
             print(chat_history)
-            vectorstore = load_vector_store(directory=vector_database_path, embedding_model=embedding_model)
-            chat_response = response(text_model, vectorstore, whatsapp_prompt_template, message_body, user.age, user.activity_summary, user.communication_rating, user.leadership_rating, user.behaviour_rating, user.responsiveness_rating, user.difficult_concepts, user.understood_concepts, user.tone_style, chat_history)
+            
+            # Call ML Model service instead of local processing
+            chat_response = await ml_model_service.query_model(message_body)
             
             print("chat_response", chat_response)
             print("chat_response",type(chat_response) )
             send_message(phone_number, chat_response.get('result') , chat_response.get('relevant_images'))
-            summary = summarize_chat(text_model, history_summarize_prompt_template, message_body, chat_response.get('result'))
+            
+            # Create a simple summary for WhatsApp chat history
+            summary = f"User question: {message_body} AI answer: {chat_response.get('result')}"
             db_query = models.WhatsappSummary(summary=summary,user_id=user.id, phone_number=local_phone_number) 
             db.add(db_query)
             db.commit()
@@ -349,6 +415,43 @@ async def reply(question: Request,db: db_dependency):
 
 # ======================== API ENDPOINTS ========================
 
+# OAuth2-compliant token endpoint for authentication
+@app.post("/token", status_code=status.HTTP_200_OK)
+async def login_for_access_token(db: db_dependency, form_data: OAuth2PasswordRequestForm = Depends()):
+    """
+    OAuth2-compliant token endpoint that accepts username (email) and password
+    Returns access_token and token_type for both regular users and admin
+    """
+    
+    # Check if it's the hardcoded admin
+    if form_data.username == "admin@gmail.com" and form_data.password == "adminObotutor123$":
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_jwt_token({"sub": form_data.username}, expires_delta=access_token_expires)
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer"
+        }
+    
+    # Check regular users
+    user_db = db.query(models.User).filter(models.User.email == form_data.username).first()
+    
+    if user_db is None or not pwd_context.verify(form_data.password, user_db.password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Generate JWT token
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_jwt_token({"sub": str(user_db.id)}, expires_delta=access_token_expires)
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer"
+    }
+
 
 # --TO DO--
 # password hashing and match databases hashed password
@@ -362,7 +465,7 @@ async def login_user(user: UserLogin, db: db_dependency):
     
     # Generate JWT token
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_jwt_token({"sub": user_db.id}, expires_delta=access_token_expires)
+    access_token = create_jwt_token({"sub": str(user_db.id)}, expires_delta=access_token_expires)
     
     return {
         "user_details": user_db, 
@@ -520,14 +623,14 @@ async def update_user(user_update: UserBaseAdmin, db: db_dependency, token: str 
 
 # create chatbox
 @app.post("/api/chatbox", status_code=status.HTTP_200_OK)
-async def create_chatbox(chatbox: Chatbox, db: db_dependency, token: str = Depends(oauth2_scheme)):
+async def create_chatbox(chatbox_request: ChatboxRequest, db: db_dependency, token: str = Depends(oauth2_scheme)):
     
     payload = decode_jwt_token(token)
-    user_id = payload.get("sub")
+    user_id = get_user_id_from_token(payload)
     print(user_id)
     
     #create chatbox
-    newChatBox = Chatbox(chat_name=chatbox.chat_name, user_id=user_id)
+    newChatBox = Chatbox(chat_name=chatbox_request.chat_name, user_id=user_id)
     
     db_chatbox = models.Chatbox(**newChatBox.model_dump())  
 
@@ -579,9 +682,11 @@ async def create_message(message: Message, db: db_dependency, token: str = Depen
     print(chat_history)
 
     try:
-        vectorstore = load_vector_store(directory=vector_database_path, embedding_model=embedding_model)
-        chat_response = response(text_model, vectorstore, prompt_template, message.message, user.age, user.activity_summary, user.communication_rating, user.leadership_rating, user.behaviour_rating, user.responsiveness_rating, user.difficult_concepts, user.understood_concepts, user.tone_style, chat_history)
-        summary = summarize_chat(text_model, history_summarize_prompt_template, message.message, chat_response.get('result'))
+        # Call ML Model service instead of local processing
+        chat_response = await ml_model_service.query_model(message.message)
+        
+        # Create a simple summary for chat history
+        summary = f"User question: {message.message} AI answer: {chat_response.get('result')}"
         db_query = models.Summary(summary=summary, user_id=user_id, chatbox_id=chatbox_id)
         db.add(db_query)
         db.commit()
@@ -594,8 +699,12 @@ async def create_message(message: Message, db: db_dependency, token: str = Depen
         db.commit()
 
     related_images = ''
-    for img in chat_response.get('relevant_images'):
-        related_images += img + ","
+    relevant_images_list = chat_response.get('relevant_images', [])
+    if relevant_images_list:
+        if isinstance(relevant_images_list, list):
+            related_images = ",".join(str(img) for img in relevant_images_list)
+        else:
+            related_images = str(relevant_images_list)
     print(related_images)
 
     # add chat response to db

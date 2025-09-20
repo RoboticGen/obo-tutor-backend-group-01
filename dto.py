@@ -18,6 +18,7 @@ class Role(str, Enum):
 class UserRole(str, Enum):
     STUDENT = "Student"
     TUTOR = "Tutor"
+    ADMIN = "Admin"
 
 class UserBase(BaseModel):
     first_name: str
@@ -50,6 +51,9 @@ class UserBaseAdmin(BaseModel):
 class Chatbox(BaseModel):
     chat_name: str = "to be filled"
     user_id: int 
+
+class ChatboxRequest(BaseModel):
+    chat_name: str
    
     
     
@@ -103,7 +107,7 @@ class UserValidate(BaseModel):
         return value
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "phone number": {
                 "format 1": "+94 xx xxx xxxx",
                 "format 2": "  0 xx xxx xxxx"
