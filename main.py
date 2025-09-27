@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 import models
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from dto import UserBase, UserLogin, Chatbox, ChatboxRequest, Message, UserValidate, TokenData , ChatboxUpdateRequest , UserBaseAdmin # ---
+from dto import UserBase, UserLogin, Chatbox, ChatboxRequest, ChatboxRenameRequest, Message, UserValidate, TokenData , ChatboxUpdateRequest , UserBaseAdmin # ---
 from database import engine, SessionLocal
 from passlib.context import CryptContext
 import logging
@@ -25,6 +25,7 @@ load_dotenv()
 
 from twillio import send_message
 from ml_model_service import ml_model_service
+from chat_name_generator import chat_name_generator
 
 # Removed LangChain imports since ML Model service handles AI processing
 # from langchain_google_genai import GoogleGenerativeAIEmbeddings
@@ -629,8 +630,14 @@ async def create_chatbox(chatbox_request: ChatboxRequest, db: db_dependency, tok
     user_id = get_user_id_from_token(payload)
     print(user_id)
     
+    # Generate a meaningful default name if none provided or if it's generic
+    chat_name = chatbox_request.chat_name
+    if not chat_name or chat_name.strip() == "" or chat_name in ["New Chat", "Chat", "to be filled"]:
+        # Generate a temporary name that will be updated with first message
+        chat_name = f"New Chat - {datetime.now().strftime('%m/%d')}"
+    
     #create chatbox
-    newChatBox = Chatbox(chat_name=chatbox_request.chat_name, user_id=user_id)
+    newChatBox = Chatbox(chat_name=chat_name, user_id=user_id)
     
     db_chatbox = models.Chatbox(**newChatBox.model_dump())  
 
@@ -642,6 +649,44 @@ async def create_chatbox(chatbox_request: ChatboxRequest, db: db_dependency, tok
     if chatbox_id is None:
         raise HTTPException(status_code=404, detail="Chatbox not created")
     return db_chatbox
+
+
+# rename chatbox
+@app.put("/api/chatbox/{chatbox_id}/rename", status_code=status.HTTP_200_OK)
+async def rename_chatbox(chatbox_id: int, rename_request: ChatboxRenameRequest, db: db_dependency, token: str = Depends(oauth2_scheme)):
+    """Rename a chatbox to a custom name"""
+    
+    payload = decode_jwt_token(token)
+    user_id = get_user_id_from_token(payload)
+    
+    # Find the chatbox and verify ownership
+    chatbox = db.query(models.Chatbox).filter(
+        models.Chatbox.id == chatbox_id,
+        models.Chatbox.user_id == user_id
+    ).first()
+    
+    if not chatbox:
+        raise HTTPException(status_code=404, detail="Chatbox not found or access denied")
+    
+    # Validate new name
+    new_name = rename_request.new_name.strip()
+    if not new_name or len(new_name) < 1:
+        raise HTTPException(status_code=400, detail="Chat name cannot be empty")
+    
+    if len(new_name) > 50:
+        new_name = new_name[:47] + "..."
+    
+    # Update the name
+    old_name = chatbox.chat_name
+    chatbox.chat_name = new_name
+    db.commit()
+    
+    return {
+        "message": "Chatbox renamed successfully",
+        "old_name": old_name,
+        "new_name": new_name,
+        "chatbox_id": chatbox_id
+    }
 
 
 # ask question and get answer from the chatbot in the WHATSAPP
@@ -668,22 +713,32 @@ async def create_message(message: Message, db: db_dependency, token: str = Depen
     user = db.query(models.User).filter(models.User.id == user_id).first()
     print(user)
 
-    # get chat summaries for the chat history accoriding to the user id & chatbox id
-    chat_summaries = db.query(models.Summary).filter(
-        models.Summary.user_id == user_id,
-        models.Summary.chatbox_id == chatbox_id
-    ).order_by(models.Summary.created_at.desc()).offset(0).limit(20).all()
+    # Get recent messages from this chatbox for context
+    recent_messages = db.query(models.Message).filter(
+        models.Message.chatbox_id == chatbox_id
+    ).order_by(models.Message.created_at.desc()).limit(10).all()
+    
+    # Build chat history from recent messages
+    chat_context = ""
+    for msg in reversed(recent_messages):  # Reverse to get chronological order
+        # Skip the current message we just added
+        if msg.id != message_id:
+            msg_user = db.query(models.User).filter(models.User.id == msg.user_id).first()
+            if msg_user:
+                if msg.message_type == "Human":
+                    chat_context += f"Student: {msg.message}\n"
+                else:
+                    chat_context += f"AI: {msg.message}\n"
 
-    print(chat_summaries)
-
-    chat_history = ""
-    for c in chat_summaries:
-        chat_history += c.summary + ","
-    print(chat_history)
+    print("Chat context:", chat_context)
 
     try:
-        # Call ML Model service instead of local processing
-        chat_response = await ml_model_service.query_model(message.message)
+        # Call ML Model service with chat context
+        chat_response = await ml_model_service.query_model(
+            question=message.message,
+            chat_history=chat_context,
+            chatbox_id=chatbox_id
+        )
         
         # Create a simple summary for chat history
         summary = f"User question: {message.message} AI answer: {chat_response.get('result')}"
@@ -712,6 +767,32 @@ async def create_message(message: Message, db: db_dependency, token: str = Depen
     db.add(db_message)
     db.commit()
     db.refresh(db_message)
+
+    # Auto-update chat name if this is the first user message or has generic name
+    chatbox = db.query(models.Chatbox).filter(models.Chatbox.id == chatbox_id).first()
+    if chatbox:
+        # Check if this is the first meaningful exchange (2-3 messages: user + bot + maybe another user)
+        total_messages = db.query(models.Message).filter(models.Message.chatbox_id == chatbox_id).count()
+        
+        # Update name if it's generic or this is one of the first few messages
+        should_update_name = (
+            total_messages <= 4 and  # First few messages 
+            (chatbox.chat_name.startswith("New Chat") or 
+             chatbox.chat_name in ["to be filled", "Chat", "General Discussion"] or
+             "Chat - " in chatbox.chat_name)
+        )
+        
+        if should_update_name:
+            # Generate meaningful name from the first user message and AI response
+            new_name = chat_name_generator.generate_name_from_first_message(
+                message.message, 
+                chat_response.get('result', '')
+            )
+            
+            # Update the chatbox name
+            chatbox.chat_name = new_name
+            db.commit()
+            print(f"Updated chat name to: {new_name}")
 
     return JSONResponse({"message": "Message created successfully", "result": chat_response.get('result') , "relevant_images": related_images} )
 
@@ -844,8 +925,155 @@ async def update_chatbox(chat_id: int, chatbox_update: ChatboxUpdateRequest, db:
     
     return all_chatboxes
 
-#get student_id by email 
-@app.get("/api/student/{email}" , status_code=status.HTTP_200_OK)
+# Auto-generate meaningful chat name based on conversation content
+@app.put("/api/chatbox/{chat_id}/generate-name" , status_code=status.HTTP_200_OK)
+async def auto_generate_chat_name(chat_id: int, db: db_dependency, token: str = Depends(oauth2_scheme)):
+    """
+    Automatically generate a meaningful name for the chat based on conversation content
+    """
+    payload = decode_jwt_token(token)
+    user_id = payload.get("sub")
+    
+    # Get the chatbox
+    db_chatbox = db.query(models.Chatbox).filter(
+        models.Chatbox.id == chat_id,
+        models.Chatbox.user_id == user_id
+    ).first()
+    
+    if db_chatbox is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chatbox not found")
+    
+    # Get all messages from this chat
+    messages = db.query(models.Message).filter(
+        models.Message.chatbox_id == chat_id
+    ).order_by(models.Message.created_at.asc()).all()
+    
+    if not messages:
+        raise HTTPException(status_code=400, detail="Cannot generate name for empty chat")
+    
+    # Get the first user message for primary analysis
+    first_user_message = next((msg.message for msg in messages if msg.message_type == "user"), None)
+    first_ai_message = next((msg.message for msg in messages if msg.message_type == "gpt"), None)
+    
+    if not first_user_message:
+        raise HTTPException(status_code=400, detail="No user messages found")
+    
+    # Generate name based on conversation
+    if len(messages) <= 2:
+        # Use first message method
+        new_name = chat_name_generator.generate_name_from_first_message(
+            first_user_message, 
+            first_ai_message or ""
+        )
+    else:
+        # Use full conversation analysis
+        all_messages = [msg.message for msg in messages]
+        new_name = chat_name_generator.update_name_with_conversation(
+            db_chatbox.chat_name, 
+            all_messages
+        )
+    
+    # Update the chatbox name
+    old_name = db_chatbox.chat_name
+    db_chatbox.chat_name = new_name
+    db.commit()
+    db.refresh(db_chatbox)
+    
+    return {
+        "message": "Chat name updated successfully",
+        "old_name": old_name,
+        "new_name": new_name,
+        "chatbox": db_chatbox
+    }
+
+# Batch update all generic chat names for a user
+@app.put("/api/user/chatboxes/generate-names", status_code=status.HTTP_200_OK)
+async def batch_generate_chat_names(db: db_dependency, token: str = Depends(oauth2_scheme)):
+    """
+    Batch update all generic chat names for the current user
+    """
+    payload = decode_jwt_token(token)
+    user_id = payload.get("sub")
+    
+    # Get all chatboxes for this user with generic names
+    generic_names = ["to be filled", "New Chat", "Chat", "General Discussion"]
+    
+    chatboxes = db.query(models.Chatbox).filter(
+        models.Chatbox.user_id == user_id
+    ).all()
+    
+    updated_chats = []
+    skipped_chats = []
+    
+    for chatbox in chatboxes:
+        # Skip if name is already meaningful
+        is_generic = (
+            chatbox.chat_name in generic_names or 
+            chatbox.chat_name.startswith("New Chat -") or
+            chatbox.chat_name.startswith("Chat -")
+        )
+        
+        if not is_generic:
+            skipped_chats.append({
+                "id": chatbox.id,
+                "name": chatbox.chat_name,
+                "reason": "Already has meaningful name"
+            })
+            continue
+        
+        # Get messages for this chat
+        messages = db.query(models.Message).filter(
+            models.Message.chatbox_id == chatbox.id
+        ).order_by(models.Message.created_at.asc()).all()
+        
+        if not messages:
+            skipped_chats.append({
+                "id": chatbox.id,
+                "name": chatbox.chat_name,
+                "reason": "No messages found"
+            })
+            continue
+        
+        # Generate new name
+        first_user_message = next((msg.message for msg in messages if msg.message_type == "user"), None)
+        first_ai_message = next((msg.message for msg in messages if msg.message_type == "gpt"), None)
+        
+        if not first_user_message:
+            skipped_chats.append({
+                "id": chatbox.id,
+                "name": chatbox.chat_name,
+                "reason": "No user messages found"
+            })
+            continue
+        
+        old_name = chatbox.chat_name
+        new_name = chat_name_generator.generate_name_from_first_message(
+            first_user_message, 
+            first_ai_message or ""
+        )
+        
+        # Update the name
+        chatbox.chat_name = new_name
+        updated_chats.append({
+            "id": chatbox.id,
+            "old_name": old_name,
+            "new_name": new_name
+        })
+    
+    # Commit all changes
+    if updated_chats:
+        db.commit()
+    
+    return {
+        "message": f"Updated {len(updated_chats)} chat names",
+        "updated_chats": updated_chats,
+        "skipped_chats": skipped_chats,
+        "summary": {
+            "total_chats": len(chatboxes),
+            "updated": len(updated_chats),
+            "skipped": len(skipped_chats)
+        }
+    }
 async def get_student(email: str, db: db_dependency, token: str = Depends(oauth2_scheme)):
     
     payload = decode_jwt_token(token)

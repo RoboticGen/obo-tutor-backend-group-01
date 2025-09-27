@@ -54,6 +54,9 @@ class Chatbox(BaseModel):
 
 class ChatboxRequest(BaseModel):
     chat_name: str
+
+class ChatboxRenameRequest(BaseModel):
+    new_name: str
    
     
     

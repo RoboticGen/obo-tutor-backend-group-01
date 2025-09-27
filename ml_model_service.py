@@ -11,22 +11,28 @@ class MLModelService:
         self.base_url = os.getenv("ML_MODEL_URL", "http://127.0.0.1:8000")
         self.timeout = 30.0
     
-    async def query_model(self, question: str) -> Dict[str, Any]:
+    async def query_model(self, question: str, chat_history: str = "", chatbox_id: int = None) -> Dict[str, Any]:
         """
-        Send a question to the ML Model service and get the response
+        Send a question to the ML Model service with chat context
         
         Args:
             question: The user's question
+            chat_history: Previous conversation context
+            chatbox_id: ID of the chatbox for context
             
         Returns:
             Dictionary containing 'result' and 'relevant_images'
         """
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                # Send POST request to ML Model query endpoint with question as query parameter
+                # Send POST request with question and context
                 response = await client.post(
                     f"{self.base_url}/model/query/",
-                    params={"question": question}
+                    json={
+                        "question": question,
+                        "chat_history": chat_history,
+                        "chatbox_id": chatbox_id
+                    }
                 )
                 
                 if response.status_code == 200:
